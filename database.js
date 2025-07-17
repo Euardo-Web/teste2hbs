@@ -26,6 +26,7 @@ const connectionOptions = {
     busyTimeout: 10000
 };
 
+
 // Função para verificar permissões de arquivo
 function verificarPermissoesArquivo() {
     try {
@@ -447,7 +448,6 @@ async function importarDados(dados) {
             await inserirItem(itemSemId);
         }
         
-        // Inserir movimentações, se existirem
         if (dados.movimentacoes && Array.isArray(dados.movimentacoes)) {
             for (const mov of dados.movimentacoes) {
                 // Formatar dados para inserção
@@ -570,7 +570,42 @@ function descontarEstoque(itemId, quantidade) {
     });
 }
 
-// ...todas as funções...
+async function buscarRequisicaoPorId(id) {
+    console.log('Buscando requisição com ID:', id);
+    return new Promise((resolve, reject) => {
+        const query = `
+            SELECT 
+                r.id,
+                r.userId,
+                r.itemId,
+                r.quantidade,
+                r.centroCusto,
+                r.projeto,
+                r.justificativa,
+                r.status,
+                r.observacoes,
+                r.data,
+                u.name as userName,
+                i.nome as itemNome,
+                i.descricao as itemDescricao
+            FROM requisicoes r
+            JOIN usuarios u ON r.userId = u.id
+            JOIN itens i ON r.itemId = i.id
+            WHERE r.id = ?
+        `;
+        
+        db.get(query, [id], (err, row) => {
+            if (err) {
+                console.error('Erro ao buscar requisição por ID:', err);
+                reject(err);
+            } else {
+                resolve(row);
+            }
+        });
+    });
+}
+
+
 
 module.exports = {
     // Funções de usuário
@@ -599,6 +634,7 @@ module.exports = {
     buscarRequisicoesUsuario,
     buscarRequisicoesPendentes,
     atualizarStatusRequisicao,
-    descontarEstoque
+    descontarEstoque,
+    buscarRequisicaoPorId,
 };
 

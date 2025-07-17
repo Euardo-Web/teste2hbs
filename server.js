@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
-const db = require('./database'); // Assumindo que o arquivo do banco está como database.js
+const db = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -227,11 +227,8 @@ app.post('/api/requisicoes/:id/aprovar', async (req, res) => {
     try {
         const { id } = req.params;
         
-        // Buscar dados da requisição
-        const requisicao = await db.run(
-            'SELECT * FROM requisicoes WHERE id = ?', 
-            [id]
-        );
+        // Buscar dados da requisição corretamente
+        const requisicao = await db.buscarRequisicaoPorId(id);
         
         if (!requisicao) {
             return res.status(404).json({
