@@ -145,6 +145,24 @@ app.post('/api/itens', async (req, res) => {
     }
 });
 
+// Rota para unificar itens duplicados
+app.post('/api/unificar-itens', async (req, res) => {
+    try {
+        const resultado = await db.unificarItensDuplicados();
+        res.json({
+            success: true,
+            message: 'Itens duplicados unificados com sucesso',
+            ...resultado
+        });
+    } catch (error) {
+        console.error('Erro ao unificar itens:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erro ao unificar itens: ' + error.message
+        });
+    }
+});
+
 // Rotas para requisições
 app.post('/api/requisicoes', async (req, res) => {
     try {
@@ -353,6 +371,47 @@ process.on('SIGINT', () => {
     console.log('\nDesligando servidor...');
     db.fecharConexao();
     process.exit(0);
+});
+
+// Rota para deletar item
+app.delete('/api/itens/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Verificar se o item existe
+        const item = await db.buscarItemPorId(id);
+        if (!item) {
+            return res.status(404).json({
+                success: false,
+                message: 'Item não encontrado'
+            });
+        }
+
+        // Verificar se há requisições pendentes para este item
+        const requisicoesPendentes = await db.buscarRequisicoesPendentes();
+        const temRequisicaoPendente = requisicoesPendentes.some(req => req.itemId === parseInt(id));
+        
+        if (temRequisicaoPendente) {
+            return res.status(400).json({
+                success: false,
+                message: 'Não é possível remover o item pois existem requisições pendentes'
+            });
+        }
+
+        // Remover o item
+        await db.removerItem(id);
+        
+        res.json({
+            success: true,
+            message: 'Item removido com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao remover item:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao remover item'
+        });
+    }
 });
 
 module.exports = app;

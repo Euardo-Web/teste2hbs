@@ -151,6 +151,24 @@ db.serialize(() => {
         )
     `);
 
+    // Tabela de requisições
+    db.run(`
+        CREATE TABLE IF NOT EXISTS requisicoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            userId INTEGER,
+            itemId INTEGER,
+            quantidade INTEGER,
+            centroCusto TEXT,
+            projeto TEXT,
+            justificativa TEXT,
+            status TEXT DEFAULT 'pendente',
+            data DATETIME DEFAULT CURRENT_TIMESTAMP,
+            observacoes TEXT,
+            FOREIGN KEY (userId) REFERENCES usuarios(id),
+            FOREIGN KEY (itemId) REFERENCES itens(id)
+        )
+    `);
+
     // Índices para melhor performance
     db.run(`CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email)`);
     db.run(`CREATE INDEX IF NOT EXISTS idx_itens_nome ON itens(nome)`);
@@ -479,26 +497,78 @@ async function importarDados(dados) {
         throw error;
     }
 }
-// ...existing code...
 
-// Tabela de requisições
-db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS requisicoes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        userId INTEGER,
-        itemId INTEGER,
-        quantidade INTEGER,
-        centroCusto TEXT,
-        projeto TEXT,
-        justificativa TEXT,
-        status TEXT DEFAULT 'pendente',
-        data DATETIME DEFAULT CURRENT_TIMESTAMP,
-        observacoes TEXT,
-        FOREIGN KEY (userId) REFERENCES usuarios(id),
-        FOREIGN KEY (itemId) REFERENCES itens(id)
-    )`);
-});
+// Função para unificar itens duplicados
+async function unificarItensDuplicados() {
+    try {
+        // Começar uma transação
+        await run('BEGIN TRANSACTION');
 
+        // Buscar itens com nomes duplicados
+        const duplicados = await new Promise((resolve, reject) => {
+            db.all(`
+                SELECT nome, COUNT(*) as count, GROUP_CONCAT(id) as ids
+                FROM itens
+                GROUP BY nome
+                HAVING COUNT(*) > 1
+            `, [], (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows);
+            });
+        });
+
+        let totalUnificados = 0;
+
+        // Para cada grupo de itens duplicados
+        for (const grupo of duplicados) {
+            const ids = grupo.ids.split(',').map(Number);
+            const [idPrincipal, ...idsParaUnificar] = ids;
+
+            // Somar as quantidades dos itens duplicados
+            const itensParaUnificar = await Promise.all(idsParaUnificar.map(id => buscarItemPorId(id)));
+            const itemPrincipal = await buscarItemPorId(idPrincipal);
+
+            const novaQuantidade = itensParaUnificar.reduce(
+                (total, item) => total + (item ? item.quantidade : 0),
+                itemPrincipal.quantidade
+            );
+
+            // Atualizar o item principal com a soma das quantidades
+            await run(
+                'UPDATE itens SET quantidade = ? WHERE id = ?',
+                [novaQuantidade, idPrincipal]
+            );
+
+            // Atualizar movimentações para apontar para o item principal
+            await run(
+                'UPDATE movimentacoes SET item_id = ? WHERE item_id IN (?)',
+                [idPrincipal, idsParaUnificar]
+            );
+
+            // Deletar os itens duplicados
+            await run(
+                'DELETE FROM itens WHERE id IN (?)',
+                [idsParaUnificar]
+            );
+
+            totalUnificados += idsParaUnificar.length;
+        }
+
+        // Confirmar as alterações
+        await run('COMMIT');
+
+        return {
+            total: totalUnificados,
+            message: `${totalUnificados} itens duplicados foram unificados com sucesso.`
+        };
+    } catch (error) {
+        // Em caso de erro, reverter todas as alterações
+        await run('ROLLBACK');
+        throw error;
+    }
+}
+
+// Funções de requisições
 function criarRequisicao(requisicao) {
     return new Promise((resolve, reject) => {
         const sql = `INSERT INTO requisicoes (userId, itemId, quantidade, centroCusto, projeto, justificativa) 
@@ -571,7 +641,6 @@ function descontarEstoque(itemId, quantidade) {
 }
 
 async function buscarRequisicaoPorId(id) {
-    console.log('Buscando requisição com ID:', id);
     return new Promise((resolve, reject) => {
         const query = `
             SELECT 
@@ -605,8 +674,6 @@ async function buscarRequisicaoPorId(id) {
     });
 }
 
-
-
 module.exports = {
     // Funções de usuário
     buscarUsuarioPorEmail,
@@ -636,5 +703,8 @@ module.exports = {
     atualizarStatusRequisicao,
     descontarEstoque,
     buscarRequisicaoPorId,
+
+    // Função para unificar itens duplicados
+    unificarItensDuplicados
 };
 
