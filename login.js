@@ -215,7 +215,7 @@ function showUserInfo() {
         <h3>${currentUser.name}</h3>
         <p><strong>Email:</strong> ${currentUser.email}</p>
         <div class="user-badge ${currentUser.userType}">
-            ${currentUser.userType === 'admin' ? '👑 Administrador' : '👤 Usuário'}
+            ${currentUser.userType === 'admin' ? ' Administrador' : 'Usuário'}
         </div>
     `;
     userInfo.classList.add('show');
@@ -233,7 +233,7 @@ function logout() {
 // Redirecionar para o sistema principal
 function redirectToSystem() {
     sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
-    window.location.href = '/';
+    window.location.href = '/index.html';
 }
 
 // Verificar se já está logado

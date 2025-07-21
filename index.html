@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="andritzlogo2.png">
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"> </script>
     <link rel="stylesheet" href="main.css">
     <title>Sistema de Estoque HBS</title>
@@ -134,7 +135,6 @@
                     </div>
                     <div class="form-group">
                         <label>&nbsp;</label>
-                        <button class="btn btn-warning" onclick="limparFiltros()">Limpar Filtros</button>
                     </div>
                 </div>
             </div>
@@ -159,7 +159,7 @@
                     <thead>
                         <tr>
                             <th>Nome</th>
-                            <th>WBS</th>
+                            <th>Cod. Item</th>
                             <th>Atual</th>
                             <th>Mínimo</th>
                             <th>Ideal</th>
@@ -298,7 +298,7 @@
                         <input type="text" id="editarNome" required>
                     </div>
                     <div class="form-group">
-                        <label for="editarSerie">WBS:</label>
+                        <label for="editarSerie">Cod. item:</label>
                         <input type="text" id="editarSerie">
                     </div>
                 </div>

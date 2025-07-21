@@ -161,7 +161,7 @@ function limparFormulario() {
 
 // Controle de estoque
 async function atualizarControleEstoque() {
-    await carregarDados();
+    // Não recarregar dados aqui, apenas atualizar a exibição
     filtrarEstoque();
     const alertas = document.getElementById('alertas');
     let itensAbaixoMinimo = itens.filter(item => item.quantidade < item.minimo);
@@ -187,7 +187,7 @@ async function atualizarControleEstoque() {
 
 // Filtro e pesquisa no controle de estoque
 function filtrarEstoque() {
-    const pesquisa = document.getElementById('pesquisaEstoque').value.toLowerCase();
+    const pesquisa = document.getElementById('pesquisaEstoque').value.trim().toLowerCase();
     const statusFiltro = document.getElementById('filtroStatus').value;
     const ordenacao = document.getElementById('ordenacao').value;
     let itensFiltrados = itens.filter(item => {
@@ -197,18 +197,18 @@ function filtrarEstoque() {
         if (item.quantidade < item.minimo) status = 'abaixo-minimo';
         else if (item.quantidade < item.ideal) status = 'abaixo-ideal';
         let statusMatch = !statusFiltro || status === statusFiltro;
+        // Se pesquisa estiver vazia, mostrar todos
+        if (!pesquisa) return statusMatch;
         return (nomeMatch || wbsMatch) && statusMatch;
     });
     // Ordenação
     if (ordenacao === 'nome') {
-        itensFiltrados.sort((a, b) => a.nome.localeCompare(b.nome));
+        itensFiltrados.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
     } else if (ordenacao === 'quantidade') {
-        itensFiltrados.sort((a, b) => b.quantidade - a.quantidade);
+        itensFiltrados.sort((a, b) => (b.quantidade || 0) - (a.quantidade || 0));
     } else if (ordenacao === 'status') {
-        itensFiltrados.sort((a, b) => {
-            let getStatus = x => (x.quantidade < x.minimo) ? 0 : (x.quantidade < x.ideal) ? 1 : 2;
-            return getStatus(a) - getStatus(b);
-        });
+        const getStatus = x => (x.quantidade < x.minimo) ? 0 : (x.quantidade < x.ideal) ? 1 : 2;
+        itensFiltrados.sort((a, b) => getStatus(a) - getStatus(b));
     }
     // Atualiza tabela
     const tbody = document.querySelector('#tabelaEstoque tbody');
@@ -240,6 +240,8 @@ function filtrarEstoque() {
         row.addEventListener('click', function(e) {
             if (e.target.tagName === 'BUTTON') return;
             abrirModalEditarItem(item.id);
+
+
         });
     });
 }
@@ -271,7 +273,8 @@ document.getElementById('adicionarEstoqueForm').addEventListener('submit', async
         
         alert('Estoque adicionado com sucesso!');
         fecharModal();
-        await atualizarControleEstoque();
+         await carregarDados();
+                await atualizarControleEstoque();
     } catch (error) {
         alert('Erro ao adicionar estoque: ' + error.message);
     }
@@ -333,14 +336,18 @@ document.getElementById('retiradaForm').addEventListener('submit', async functio
 // Relatório de estoque
 async function gerarRelatorioEstoque() {
     await carregarDados();
-    
+
     const container = document.getElementById('relatorioEstoque');
-    
+
+    // Itens abaixo do mínimo
     const itensAbaixoMinimo = itens.filter(item => item.quantidade < item.minimo);
-    const itensAbaixoIdeal = itens.filter(item => item.quantidade < item.ideal);
-    
-    let html = '<h3>Itens Abaixo do Estoque Mínimo</h3>';
-    
+    // Itens abaixo do ideal, mas não abaixo do mínimo
+    const itensAbaixoIdeal = itens.filter(item => item.quantidade < item.ideal && item.quantidade >= item.minimo);
+
+    let html = '';
+
+    // Seção: Itens abaixo do mínimo
+    html += '<h3>Itens Abaixo do Estoque Mínimo</h3>';
     if (itensAbaixoMinimo.length > 0) {
         html += `
             <div class="table-container">
@@ -357,11 +364,9 @@ async function gerarRelatorioEstoque() {
                     </thead>
                     <tbody>
         `;
-        
         itensAbaixoMinimo.forEach(item => {
             const faltaMinimo = item.minimo - item.quantidade;
             const faltaIdeal = item.ideal - item.quantidade;
-            
             html += `
                 <tr>
                     <td>${item.nome}</td>
@@ -373,31 +378,91 @@ async function gerarRelatorioEstoque() {
                 </tr>
             `;
         });
-        
         html += '</tbody></table></div>';
     } else {
         html += '<div class="alert alert-info">Nenhum item abaixo do estoque mínimo.</div>';
     }
-    
+
+    // Seção: Itens abaixo do ideal
+    html += '<h3 style="margin-top:32px;">Itens Abaixo do Estoque Ideal</h3>';
+    if (itensAbaixoIdeal.length > 0) {
+        html += `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Atual</th>
+                            <th>Ideal</th>
+                            <th>Falta</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        itensAbaixoIdeal.forEach(item => {
+            const faltaIdeal = item.ideal - item.quantidade;
+            html += `
+                <tr>
+                    <td>${item.nome}</td>
+                    <td>${item.quantidade}</td>
+                    <td>${item.ideal}</td>
+                    <td>${faltaIdeal}</td>
+                </tr>
+            `;
+        });
+        html += '</tbody></table></div>';
+    } else {
+        html += '<div class="alert alert-info">Nenhum item abaixo do estoque ideal.</div>';
+    }
+
     container.innerHTML = html;
 }
 
 // Relatório de movimentação
 async function gerarRelatorioMovimentacao() {
-    const filtro = document.getElementById('filtroData').value;
-    
+    const filtroDias = document.getElementById('filtroData').value;
+    // Adicionar campos de filtro se não existirem
+    let filtrosDiv = document.getElementById('filtrosMovimentacao');
+    if (!filtrosDiv) {
+        filtrosDiv = document.createElement('div');
+        filtrosDiv.id = 'filtrosMovimentacao';
+        filtrosDiv.innerHTML = `
+            <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
+                <input type="text" id="pesquisaMovimentacao" placeholder="Pesquisar por nome, destino ou data" style="padding:4px;">
+                <input type="number" id="filtroQtdMov" placeholder="Quantidade" min="1" style="width:100px;padding:4px;">
+                <button class="btn" id="btnFiltrarMov">Filtrar</button>
+                <button class="btn" id="btnLimparFiltroMov">Limpar</button>
+            </div>
+        `;
+        document.getElementById('relatorioMovimentacao').parentNode.insertBefore(filtrosDiv, document.getElementById('relatorioMovimentacao'));
+    }
+
     try {
-        movimentacoes = await apiRequest(`/movimentacoes?dias=${filtro}`);
-        
+        movimentacoes = await apiRequest(`/movimentacoes?dias=${filtroDias}`);
         const container = document.getElementById('relatorioMovimentacao');
-        
+
+        // Filtros
+        let pesquisa = document.getElementById('pesquisaMovimentacao').value.trim().toLowerCase();
+        let qtdFiltro = document.getElementById('filtroQtdMov').value;
+
+        let movFiltradas = movimentacoes.filter(mov => {
+            let nomeMatch = mov.item_nome && mov.item_nome.toLowerCase().includes(pesquisa);
+            let destinoMatch = mov.destino && mov.destino.toLowerCase().includes(pesquisa);
+            let dataMov = mov.data ? new Date(mov.data) : null;
+            let dataStr = dataMov ? dataMov.toLocaleDateString('pt-BR') : '';
+            let dataMatch = dataStr.includes(pesquisa);
+            let pesquisaOk = !pesquisa || nomeMatch || destinoMatch || dataMatch;
+            let qtdOk = !qtdFiltro || mov.quantidade == qtdFiltro;
+            return pesquisaOk && qtdOk;
+        });
+
         // Estatísticas do período
-        const entradas = movimentacoes.filter(mov => mov.tipo === 'entrada');
-        const saidas = movimentacoes.filter(mov => mov.tipo === 'saida');
-        
+        const entradas = movFiltradas.filter(mov => mov.tipo === 'entrada');
+        const saidas = movFiltradas.filter(mov => mov.tipo === 'saida');
+
         const totalEntradas = entradas.reduce((sum, mov) => sum + mov.quantidade, 0);
         const totalSaidas = saidas.reduce((sum, mov) => sum + mov.quantidade, 0);
-        
+
         let html = `
             <div class="stats-grid">
                 <div class="stat-card">
@@ -409,15 +474,14 @@ async function gerarRelatorioMovimentacao() {
                     <div class="stat-label">Itens Retirados</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number">${movimentacoes.length}</div>
+                    <div class="stat-number">${movFiltradas.length}</div>
                     <div class="stat-label">Total de Movimentações</div>
                 </div>
             </div>
-            
-            <h3>Movimentações dos Últimos ${filtro} dias</h3>
+            <h3>Movimentações dos Últimos ${filtroDias} dias</h3>
         `;
-        
-        if (movimentacoes.length > 0) {
+
+        if (movFiltradas.length > 0) {
             html += `
                 <div class="table-container">
                     <table>
@@ -428,36 +492,48 @@ async function gerarRelatorioMovimentacao() {
                                 <th>Tipo</th>
                                 <th>Quantidade</th>
                                 <th>Destino/Origem</th>
+                                <th>Centro de Custo</th>
                                 <th>Descrição</th>
                             </tr>
                         </thead>
                         <tbody>
             `;
-            
-            movimentacoes.forEach(mov => {
+            movFiltradas.forEach(mov => {
                 const data = new Date(mov.data).toLocaleDateString('pt-BR');
                 const hora = new Date(mov.data).toLocaleTimeString('pt-BR');
                 const tipoClass = mov.tipo === 'entrada' ? 'status-ideal' : 'status-baixo';
                 const tipoTexto = mov.tipo === 'entrada' ? 'Entrada' : 'Saída';
-                
+                // Centro de custo: só mostrar se for retirada por requisição
+                let centroCusto = '-';
+                if (mov.descricao && mov.descricao.toLowerCase().includes('requisição')) {
+                    centroCusto = mov.destino || '-';
+                }
                 html += `
                     <tr>
                         <td>${data} ${hora}</td>
                         <td>${mov.item_nome}</td>
                         <td><span class="${tipoClass}">${tipoTexto}</span></td>
                         <td>${mov.quantidade}</td>
-                        <td>${mov.destino || '-'}</td>
+                        <td>${mov.destino || mov.origem || '-'}</td>
+                        <td>${centroCusto}</td>
                         <td>${mov.descricao || '-'}</td>
                     </tr>
                 `;
             });
-            
             html += '</tbody></table></div>';
         } else {
-            html += '<div class="alert alert-info">Nenhuma movimentação encontrada no período selecionado.</div>';
+            html += '<div class="alert alert-info">Nenhuma movimentação encontrada no período/filtro selecionado.</div>';
         }
-        
+
         container.innerHTML = html;
+
+        // Eventos dos filtros
+        document.getElementById('btnFiltrarMov').onclick = gerarRelatorioMovimentacao;
+        document.getElementById('btnLimparFiltroMov').onclick = function() {
+            document.getElementById('pesquisaMovimentacao').value = '';
+            document.getElementById('filtroQtdMov').value = '';
+            gerarRelatorioMovimentacao();
+        };
     } catch (error) {
         alert('Erro ao gerar relatório: ' + error.message);
     }
@@ -504,8 +580,10 @@ window.importarPlanilhaEPI = async function(event) {
             for (const item of json) {
                 // Mapeamento especial para planilhas do modelo fornecido
                 const nomePlanilha = item["Descrição Material Atendido"] || '';
+                // Prioriza 'Cod. Material Atendido' como série (WBS), se existir
+                const codMaterial = item["Cod. Material Atendido"] || '';
                 const wbsPlanilha = item["WBS"] || item["Wbs"] || item["wbs"] || '';
-                const seriePlanilha = wbsPlanilha || item["Cod. Material Atendido"] || '';
+                const seriePlanilha = codMaterial || wbsPlanilha;
                 const quantidadePlanilha = item["Qtd. Atendida"] || '';
                 const novoItem = {
                     nome: nomePlanilha || item.nome || item.Nome || item["Nome do Item"] || '',
@@ -573,8 +651,8 @@ window.importarPlanilhaEPI = async function(event) {
             }
             let msg = `Importação concluída! Sucesso: ${sucesso}, Falha: ${falha}`;
             if (nomesSucesso.length > 0) msg += '\nItens importados: ' + nomesSucesso.join(', ');
-            if (erros.length > 0) msg += '\n' + erros.join('\n');
             if (sucesso === 0 && falha === 0) msg += '\nNenhum item válido encontrado na planilha.';
+            if (erros.length > 0 && falha > 0) msg += '\n' + erros.join('\n');
             alert(msg);
             await carregarDados();
             await atualizarControleEstoque();
@@ -630,7 +708,11 @@ document.getElementById('editarItemForm').addEventListener('submit', async funct
         await apiRequest(`/itens/${id}`, 'PUT', itemEditado);
         alert('Item atualizado com sucesso!');
         fecharModalEditarItem();
+        await carregarDados();
         await atualizarControleEstoque();
+        await atualizarSelectRetirada();
+        await gerarRelatorioEstoque();
+        await gerarRelatorioMovimentacao();
     } catch (error) {
         alert('Erro ao atualizar item: ' + error.message);
     }
@@ -667,16 +749,115 @@ window.unificarItensDuplicados = async function() {
     }
 };
 
+// Exportar relatório
+window.exportarRelatorio = async function(tipo) {
+    try {
+        // Garantir que temos os dados mais recentes
+        await carregarDados();
+        
+        // Criar uma nova planilha
+        const wb = XLSX.utils.book_new();
+        
+        if (tipo === 'estoque') {
+            console.log('Exportando relatório de estoque...');
+            // Preparar dados do relatório de estoque
+            const MAX_CELL_LENGTH = 32000;
+            const sanitizar = txt => {
+                if (txt === undefined || txt === null) return '-';
+                let str = String(txt);
+                str = str.replace(/[\r\n]+/g, ' ');
+                return str.slice(0, MAX_CELL_LENGTH);
+            };
+            const dadosEstoque = itens.map(item => ({
+                'Nome do Item': sanitizar(item.nome),
+                'Código/WBS': sanitizar(item.serie || '-'),
+                'Quantidade Atual': item.quantidade,
+                'Quantidade Mínima': item.minimo,
+                'Quantidade Ideal': item.ideal,
+                'Status': sanitizar(item.quantidade < item.minimo ? 'Abaixo do Mínimo' : 
+                         item.quantidade < item.ideal ? 'Abaixo do Ideal' : 'Ideal'),
+                'Descrição': sanitizar(item.descricao || '-'),
+                'Origem': sanitizar(item.origem || '-'),
+                'Valor': item.valor || 0,
+                'Nota Fiscal': sanitizar(item.nf || '-'),
+                'Informações': sanitizar(item.infos || '-')
+            }));
+
+            if (dadosEstoque.length === 0) {
+                throw new Error('Não há dados de estoque para exportar.');
+            }
+
+            // Criar planilha
+            const ws = XLSX.utils.json_to_sheet(dadosEstoque);
+            
+            // Adicionar a planilha ao workbook
+            XLSX.utils.book_append_sheet(wb, ws, "Relatório de Estoque");
+            
+            // Salvar o arquivo
+            const dataHora = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const filename = `relatorio-estoque-${dataHora}.xlsx`;
+            XLSX.writeFile(wb, filename);
+            console.log('Relatório de estoque exportado:', filename);
+            
+        } else if (tipo === 'movimentacao') {
+            console.log('Exportando relatório de movimentação...');
+            // Preparar dados do relatório de movimentação
+            const MAX_CELL_LENGTH = 32000;
+            const sanitizar = txt => {
+                if (txt === undefined || txt === null) return '-';
+                let str = String(txt);
+                str = str.replace(/[\r\n]+/g, ' ');
+                return str.slice(0, MAX_CELL_LENGTH);
+            };
+            const dadosMovimentacao = movimentacoes.map(mov => ({
+                'Data': sanitizar(new Date(mov.data).toLocaleString('pt-BR')),
+                'Item': sanitizar(mov.item_nome),
+                'Tipo': sanitizar(mov.tipo === 'entrada' ? 'Entrada' : 'Saída'),
+                'Quantidade': mov.quantidade,
+                'Destino/Origem': sanitizar(mov.destino || mov.origem || '-'),
+                'Descrição': sanitizar(mov.descricao || '-')
+            }));
+
+            if (dadosMovimentacao.length === 0) {
+                throw new Error('Não há dados de movimentação para exportar.');
+            }
+
+            // Criar planilha
+            const ws = XLSX.utils.json_to_sheet(dadosMovimentacao);
+            
+            // Adicionar a planilha ao workbook
+            XLSX.utils.book_append_sheet(wb, ws, "Relatório de Movimentação");
+            
+            // Salvar o arquivo
+            const dataHora = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const filename = `relatorio-movimentacao-${dataHora}.xlsx`;
+            XLSX.writeFile(wb, filename);
+            console.log('Relatório de movimentação exportado:', filename);
+        }
+        
+        alert('Relatório exportado com sucesso!');
+    } catch (error) {
+        console.error('Erro na exportação:', error);
+        alert('Erro ao exportar relatório: ' + error.message);
+    }
+};
+
 // Exportar banco de dados para sincronização
 window.exportarBancoDados = async function() {
     try {
         const resultadoDiv = document.getElementById('resultadoSincronizacao');
         resultadoDiv.innerHTML = '<div class="alert alert-info">Exportando dados do banco, aguarde...</div>';
         
-        const response = await fetch(API_URL + '/exportar-banco');
+        const response = await fetch(API_URL + '/exportar-banco', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
         
         if (!response.ok) {
-            throw new Error(`Erro ${response.status}: ${response.statusText}`);
+            const errorData = await response.json();
+            throw new Error(errorData.message || `Erro ${response.status}: ${response.statusText}`);
         }
         
         const dados = await response.json();
@@ -721,34 +902,36 @@ window.exportarBancoDados = async function() {
 };
 
 // Importar banco de dados para sincronização
+// Importar banco de dados para sincronização
 window.importarBancoDados = async function(event) {
     try {
         const file = event.target.files[0];
+        const resultadoDiv = document.getElementById('resultadoSincronizacao');
         if (!file) {
-            alert('Nenhum arquivo selecionado!');
+            resultadoDiv.innerHTML = '<div class="alert alert-danger">Nenhum arquivo selecionado!</div>';
             return;
         }
-        
-        const resultadoDiv = document.getElementById('resultadoSincronizacao');
-        resultadoDiv.innerHTML = '<div class="alert alert-info">Importando dados para o banco, aguarde...</div>';
-        
+        resultadoDiv.innerHTML = '<div class="alert alert-info">Lendo arquivo, aguarde...</div>';
         const reader = new FileReader();
         reader.onload = async function(e) {
             try {
                 const conteudo = e.target.result;
-                const dados = JSON.parse(conteudo);
-                
-                if (!dados.itens || !Array.isArray(dados.itens)) {
-                    throw new Error('Formato de arquivo inválido: não contém itens');
+                let dados;
+                try {
+                    dados = JSON.parse(conteudo);
+                } catch (jsonError) {
+                    resultadoDiv.innerHTML = `<div class="alert alert-danger">Arquivo inválido ou corrompido.<br>Erro: ${jsonError.message}</div>`;
+                    return;
                 }
-                
-                // Confirmação adicional
+                if (!dados || !Array.isArray(dados.itens)) {
+                    resultadoDiv.innerHTML = '<div class="alert alert-danger">Formato de arquivo inválido: não contém itens.</div>';
+                    return;
+                }
                 if (!confirm(`Tem certeza que deseja importar ${dados.itens.length} itens? Todos os dados atuais serão substituídos.`)) {
                     resultadoDiv.innerHTML = '<div class="alert alert-info">Importação cancelada pelo usuário.</div>';
                     return;
                 }
-                
-                // Enviar para o servidor
+                resultadoDiv.innerHTML = '<div class="alert alert-info">Enviando dados para o servidor...</div>';
                 const response = await fetch(API_URL + '/importar-banco', {
                     method: 'POST',
                     headers: {
@@ -757,13 +940,30 @@ window.importarBancoDados = async function(event) {
                     body: JSON.stringify(dados)
                 });
                 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || `Erro ${response.status}`);
+                // CORREÇÃO: Verificar se a resposta é JSON antes de tentar fazer parse
+                const contentType = response.headers.get('content-type');
+                let resultado;
+                
+                if (contentType && contentType.includes('application/json')) {
+                    try {
+                        resultado = await response.json();
+                    } catch (respError) {
+                        const textContent = await response.text();
+                        console.error('Resposta não é JSON válido:', textContent);
+                        resultadoDiv.innerHTML = `<div class="alert alert-danger">Servidor retornou resposta inválida.<br>Status: ${response.status}<br>Conteúdo: ${textContent.substring(0, 200)}...</div>`;
+                        return;
+                    }
+                } else {
+                    const textContent = await response.text();
+                    console.error('Resposta não é JSON:', textContent);
+                    resultadoDiv.innerHTML = `<div class="alert alert-danger">Servidor não retornou JSON.<br>Status: ${response.status}<br>Conteúdo: ${textContent.substring(0, 200)}...</div>`;
+                    return;
                 }
                 
-                const resultado = await response.json();
-                
+                if (!response.ok) {
+                    resultadoDiv.innerHTML = `<div class="alert alert-danger">Erro do servidor: ${resultado.error || response.status}</div>`;
+                    return;
+                }
                 resultadoDiv.innerHTML = `
                     <div class="alert alert-success">
                         Importação concluída com sucesso!<br>
@@ -772,39 +972,21 @@ window.importarBancoDados = async function(event) {
                         Data: ${new Date().toLocaleString()}
                     </div>
                 `;
-                
-                // Recarregar dados
                 await carregarDados();
                 await atualizarControleEstoque();
                 await atualizarSelectRetirada();
                 await gerarRelatorioEstoque();
                 await gerarRelatorioMovimentacao();
-                
             } catch (error) {
-                resultadoDiv.innerHTML = `
-                    <div class="alert alert-danger">
-                        Erro ao processar arquivo: ${error.message}
-                    </div>
-                `;
+                resultadoDiv.innerHTML = `<div class="alert alert-danger">Erro ao importar: ${error.message}</div>`;
             }
         };
-        
         reader.onerror = function() {
-            resultadoDiv.innerHTML = `
-                <div class="alert alert-danger">
-                    Erro ao ler arquivo!
-                </div>
-            `;
+            resultadoDiv.innerHTML = `<div class="alert alert-danger">Erro ao ler arquivo!</div>`;
         };
-        
         reader.readAsText(file);
-        
     } catch (error) {
-        document.getElementById('resultadoSincronizacao').innerHTML = `
-            <div class="alert alert-danger">
-                Erro ao importar banco: ${error.message}
-            </div>
-        `;
+        document.getElementById('resultadoSincronizacao').innerHTML = `<div class="alert alert-danger">Erro inesperado: ${error.message}</div>`;
     }
 };
 

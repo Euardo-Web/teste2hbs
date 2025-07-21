@@ -276,7 +276,7 @@ function enviarNovaRequisicao(event) {
     const centroCusto = document.getElementById('centroCusto').value;
     const projeto = document.getElementById('projeto').value;
     const justificativa = document.getElementById('justificativa').value;
-    if (!itemId || !quantidade || !centroCusto || !projeto || !justificativa) {
+    if (!itemId || !quantidade || !centroCusto || !projeto) {
         alert('Preencha todos os campos!');
         return;
     }
