@@ -169,11 +169,42 @@
             )
         `);
 
+        // Tabela de pacotes de requisições
+        db.run(`
+            CREATE TABLE IF NOT EXISTS pacotes_requisicoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                userId INTEGER,
+                centroCusto TEXT,
+                projeto TEXT,
+                justificativa TEXT,
+                status TEXT DEFAULT 'pendente',
+                data DATETIME DEFAULT CURRENT_TIMESTAMP,
+                observacoes TEXT,
+                FOREIGN KEY (userId) REFERENCES usuarios(id)
+            )
+        `);
+
+        // Tabela de itens do pacote de requisições
+        db.run(`
+            CREATE TABLE IF NOT EXISTS itens_pacote_requisicoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pacoteId INTEGER,
+                itemId INTEGER,
+                quantidade INTEGER,
+                status TEXT DEFAULT 'pendente',
+                observacoes TEXT,
+                FOREIGN KEY (pacoteId) REFERENCES pacotes_requisicoes(id),
+                FOREIGN KEY (itemId) REFERENCES itens(id)
+            )
+        `);
+
         // Índices para melhor performance
         db.run(`CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_itens_nome ON itens(nome)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_movimentacoes_item_id ON movimentacoes(item_id)`);
         db.run(`CREATE INDEX IF NOT EXISTS idx_movimentacoes_data ON movimentacoes(data)`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_pacotes_requisicoes_user ON pacotes_requisicoes(userId)`);
+        db.run(`CREATE INDEX IF NOT EXISTS idx_itens_pacote_pacote ON itens_pacote_requisicoes(pacoteId)`);
     });
 
     // Funções para usuários
@@ -704,6 +735,170 @@ function atualizarQuantidadeItem(id, novaQuantidade) {
     });
 }
 
+// Funções para pacotes de requisições
+function criarPacoteRequisicao(pacoteData) {
+    return new Promise((resolve, reject) => {
+        const sql = `INSERT INTO pacotes_requisicoes (userId, centroCusto, projeto, justificativa) 
+                    VALUES (?, ?, ?, ?)`;
+        db.run(sql, [
+            pacoteData.userId,
+            pacoteData.centroCusto,
+            pacoteData.projeto,
+            pacoteData.justificativa
+        ], function(err) {
+            if (err) reject(err);
+            else resolve(this.lastID);
+        });
+    });
+}
+
+function adicionarItemAoPacote(pacoteId, itemData) {
+    return new Promise((resolve, reject) => {
+        const sql = `INSERT INTO itens_pacote_requisicoes (pacoteId, itemId, quantidade) 
+                    VALUES (?, ?, ?)`;
+        db.run(sql, [pacoteId, itemData.itemId, itemData.quantidade], function(err) {
+            if (err) reject(err);
+            else resolve(this.lastID);
+        });
+    });
+}
+
+function buscarPacotesUsuario(userId) {
+    return new Promise((resolve, reject) => {
+        const sql = `
+            SELECT 
+                p.*,
+                u.name as usuario_nome,
+                COUNT(ipr.id) as total_itens,
+                SUM(CASE WHEN ipr.status = 'aprovado' THEN 1 ELSE 0 END) as itens_aprovados,
+                SUM(CASE WHEN ipr.status = 'rejeitado' THEN 1 ELSE 0 END) as itens_rejeitados,
+                SUM(CASE WHEN ipr.status = 'pendente' THEN 1 ELSE 0 END) as itens_pendentes
+            FROM pacotes_requisicoes p
+            JOIN usuarios u ON p.userId = u.id
+            LEFT JOIN itens_pacote_requisicoes ipr ON p.id = ipr.pacoteId
+            WHERE p.userId = ?
+            GROUP BY p.id
+            ORDER BY p.data DESC`;
+        db.all(sql, [userId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+}
+
+function buscarPacotesPendentes() {
+    return new Promise((resolve, reject) => {
+        const sql = `
+            SELECT 
+                p.*,
+                u.name as usuario_nome,
+                COUNT(ipr.id) as total_itens,
+                SUM(CASE WHEN ipr.status = 'aprovado' THEN 1 ELSE 0 END) as itens_aprovados,
+                SUM(CASE WHEN ipr.status = 'rejeitado' THEN 1 ELSE 0 END) as itens_rejeitados,
+                SUM(CASE WHEN ipr.status = 'pendente' THEN 1 ELSE 0 END) as itens_pendentes
+            FROM pacotes_requisicoes p
+            JOIN usuarios u ON p.userId = u.id
+            LEFT JOIN itens_pacote_requisicoes ipr ON p.id = ipr.pacoteId
+            WHERE p.status = 'pendente' OR (p.status != 'processado' AND EXISTS (
+                SELECT 1 FROM itens_pacote_requisicoes WHERE pacoteId = p.id AND status = 'pendente'
+            ))
+            GROUP BY p.id
+            ORDER BY p.data ASC`;
+        db.all(sql, (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+}
+
+function buscarItensDoPacote(pacoteId) {
+    return new Promise((resolve, reject) => {
+        const sql = `
+            SELECT 
+                ipr.*,
+                i.nome as item_nome,
+                i.quantidade as quantidade_estoque,
+                i.unidade
+            FROM itens_pacote_requisicoes ipr
+            JOIN itens i ON ipr.itemId = i.id
+            WHERE ipr.pacoteId = ?
+            ORDER BY ipr.id`;
+        db.all(sql, [pacoteId], (err, rows) => {
+            if (err) reject(err);
+            else resolve(rows);
+        });
+    });
+}
+
+function buscarPacotePorId(id) {
+    return new Promise((resolve, reject) => {
+        const sql = `
+            SELECT 
+                p.*,
+                u.name as usuario_nome
+            FROM pacotes_requisicoes p
+            JOIN usuarios u ON p.userId = u.id
+            WHERE p.id = ?`;
+        db.get(sql, [id], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+        });
+    });
+}
+
+function atualizarStatusItemPacote(itemPacoteId, status, observacoes = null) {
+    return new Promise((resolve, reject) => {
+        const sql = `UPDATE itens_pacote_requisicoes SET status = ?, observacoes = ? WHERE id = ?`;
+        db.run(sql, [status, observacoes, itemPacoteId], function(err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+        });
+    });
+}
+
+function atualizarStatusPacote(pacoteId, status, observacoes = null) {
+    return new Promise((resolve, reject) => {
+        const sql = `UPDATE pacotes_requisicoes SET status = ?, observacoes = ? WHERE id = ?`;
+        db.run(sql, [status, observacoes, pacoteId], function(err) {
+            if (err) reject(err);
+            else resolve(this.changes);
+        });
+    });
+}
+
+function verificarEAtualizarStatusPacote(pacoteId) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const itens = await buscarItensDoPacote(pacoteId);
+            const itensPendentes = itens.filter(item => item.status === 'pendente');
+            const itensAprovados = itens.filter(item => item.status === 'aprovado');
+            const itensRejeitados = itens.filter(item => item.status === 'rejeitado');
+            
+            let novoStatus = 'pendente';
+            let observacoes = null;
+            
+            if (itensPendentes.length === 0) {
+                if (itensAprovados.length > 0 && itensRejeitados.length > 0) {
+                    novoStatus = 'parcialmente_aprovado';
+                    observacoes = `${itensAprovados.length} itens aprovados, ${itensRejeitados.length} itens rejeitados`;
+                } else if (itensAprovados.length > 0) {
+                    novoStatus = 'aprovado';
+                    observacoes = 'Todos os itens foram aprovados';
+                } else {
+                    novoStatus = 'rejeitado';
+                    observacoes = 'Todos os itens foram rejeitados';
+                }
+                
+                await atualizarStatusPacote(pacoteId, novoStatus, observacoes);
+            }
+            
+            resolve(novoStatus);
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
 // 3. Adicionar essas funções no module.exports:
 module.exports = {
     // Funções existentes...
@@ -732,5 +927,14 @@ module.exports = {
     
     // NOVAS FUNÇÕES NECESSÁRIAS:
     buscarItemPorNomeEWBS,
-    atualizarQuantidadeItem
+    atualizarQuantidadeItem,
+    criarPacoteRequisicao,
+    adicionarItemAoPacote,
+    buscarPacotesUsuario,
+    buscarPacotesPendentes,
+    buscarItensDoPacote,
+    buscarPacotePorId,
+    atualizarStatusItemPacote,
+    atualizarStatusPacote,
+    verificarEAtualizarStatusPacote
 };

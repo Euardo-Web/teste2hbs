@@ -360,6 +360,332 @@ app.post('/api/requisicoes/:id/rejeitar', async (req, res) => {
     }
 });
 
+// Rotas para pacotes de requisições
+app.post('/api/pacotes-requisicoes', async (req, res) => {
+    try {
+        const { userId, centroCusto, projeto, justificativa, itens } = req.body;
+        
+        if (!userId || !centroCusto || !projeto || !itens || !Array.isArray(itens) || itens.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Todos os campos obrigatórios devem ser preenchidos e pelo menos um item deve ser incluído'
+            });
+        }
+
+        // Verificar se todos os itens existem e têm quantidade suficiente
+        for (const item of itens) {
+            const itemBanco = await db.buscarItemPorId(item.itemId);
+            if (!itemBanco) {
+                return res.status(404).json({
+                    success: false,
+                    message: `Item com ID ${item.itemId} não encontrado`
+                });
+            }
+
+            if (itemBanco.quantidade < item.quantidade) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Quantidade insuficiente no estoque para o item ${itemBanco.nome}. Disponível: ${itemBanco.quantidade}, Solicitado: ${item.quantidade}`
+                });
+            }
+        }
+
+        // Criar o pacote de requisições
+        const pacoteId = await db.criarPacoteRequisicao({
+            userId,
+            centroCusto,
+            projeto,
+            justificativa
+        });
+
+        // Adicionar cada item ao pacote
+        for (const item of itens) {
+            await db.adicionarItemAoPacote(pacoteId, {
+                itemId: item.itemId,
+                quantidade: item.quantidade
+            });
+        }
+
+        res.json({
+            success: true,
+            pacoteId: pacoteId,
+            message: 'Pacote de requisições criado com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao criar pacote de requisições:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao criar pacote de requisições'
+        });
+    }
+});
+
+app.get('/api/pacotes-requisicoes/usuario/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const pacotes = await db.buscarPacotesUsuario(userId);
+        res.json(pacotes);
+    } catch (error) {
+        console.error('Erro ao buscar pacotes do usuário:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar pacotes de requisições'
+        });
+    }
+});
+
+app.get('/api/pacotes-requisicoes/pendentes', async (req, res) => {
+    try {
+        const pacotes = await db.buscarPacotesPendentes();
+        res.json(pacotes);
+    } catch (error) {
+        console.error('Erro ao buscar pacotes pendentes:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar pacotes pendentes'
+        });
+    }
+});
+
+app.get('/api/pacotes-requisicoes/:id/itens', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const itens = await db.buscarItensDoPacote(id);
+        res.json(itens);
+    } catch (error) {
+        console.error('Erro ao buscar itens do pacote:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar itens do pacote'
+        });
+    }
+});
+
+app.get('/api/pacotes-requisicoes/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const pacote = await db.buscarPacotePorId(id);
+        
+        if (!pacote) {
+            return res.status(404).json({
+                success: false,
+                message: 'Pacote não encontrado'
+            });
+        }
+
+        const itens = await db.buscarItensDoPacote(id);
+        pacote.itens = itens;
+        
+        res.json(pacote);
+    } catch (error) {
+        console.error('Erro ao buscar pacote:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar pacote'
+        });
+    }
+});
+
+app.post('/api/pacotes-requisicoes/:pacoteId/itens/:itemId/aprovar', async (req, res) => {
+    try {
+        const { pacoteId, itemId } = req.params;
+        
+        // Buscar o item do pacote
+        const itens = await db.buscarItensDoPacote(pacoteId);
+        const itemPacote = itens.find(item => item.id == itemId);
+        
+        if (!itemPacote) {
+            return res.status(404).json({
+                success: false,
+                message: 'Item do pacote não encontrado'
+            });
+        }
+
+        // Verificar se ainda há quantidade no estoque
+        const item = await db.buscarItemPorId(itemPacote.itemId);
+        if (item.quantidade < itemPacote.quantidade) {
+            return res.status(400).json({
+                success: false,
+                message: 'Quantidade insuficiente no estoque'
+            });
+        }
+
+        // Atualizar status do item para aprovado
+        await db.atualizarStatusItemPacote(itemId, 'aprovado', 'Aprovado pelo administrador');
+        
+        // Descontar do estoque
+        await db.descontarEstoque(itemPacote.itemId, itemPacote.quantidade);
+        
+        // Buscar dados do pacote para movimentação
+        const pacote = await db.buscarPacotePorId(pacoteId);
+        
+        // Registrar movimentação
+        await db.inserirMovimentacao({
+            itemId: itemPacote.itemId,
+            itemNome: item.nome,
+            tipo: 'saida',
+            quantidade: itemPacote.quantidade,
+            destino: pacote.centroCusto,
+            descricao: `Pacote ${pacoteId} - Item aprovado - Projeto: ${pacote.projeto}`
+        });
+
+        // Verificar e atualizar status do pacote
+        await db.verificarEAtualizarStatusPacote(pacoteId);
+
+        res.json({
+            success: true,
+            message: 'Item aprovado com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao aprovar item do pacote:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao aprovar item do pacote'
+        });
+    }
+});
+
+app.post('/api/pacotes-requisicoes/:pacoteId/itens/:itemId/rejeitar', async (req, res) => {
+    try {
+        const { pacoteId, itemId } = req.params;
+        const { motivo } = req.body;
+        
+        // Buscar o item do pacote
+        const itens = await db.buscarItensDoPacote(pacoteId);
+        const itemPacote = itens.find(item => item.id == itemId);
+        
+        if (!itemPacote) {
+            return res.status(404).json({
+                success: false,
+                message: 'Item do pacote não encontrado'
+            });
+        }
+
+        // Atualizar status do item para rejeitado
+        await db.atualizarStatusItemPacote(itemId, 'rejeitado', motivo || 'Rejeitado pelo administrador');
+
+        // Verificar e atualizar status do pacote
+        await db.verificarEAtualizarStatusPacote(pacoteId);
+
+        res.json({
+            success: true,
+            message: 'Item rejeitado com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao rejeitar item do pacote:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao rejeitar item do pacote'
+        });
+    }
+});
+
+app.post('/api/pacotes-requisicoes/:id/aprovar-todos', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Buscar todos os itens pendentes do pacote
+        const itens = await db.buscarItensDoPacote(id);
+        const itensPendentes = itens.filter(item => item.status === 'pendente');
+        
+        // Buscar dados do pacote
+        const pacote = await db.buscarPacotePorId(id);
+        
+        if (!pacote) {
+            return res.status(404).json({
+                success: false,
+                message: 'Pacote não encontrado'
+            });
+        }
+
+        let erros = [];
+        let aprovados = 0;
+
+        // Processar cada item pendente
+        for (const itemPacote of itensPendentes) {
+            try {
+                // Verificar se ainda há quantidade no estoque
+                const item = await db.buscarItemPorId(itemPacote.itemId);
+                if (item.quantidade < itemPacote.quantidade) {
+                    erros.push(`${item.nome}: quantidade insuficiente no estoque`);
+                    continue;
+                }
+
+                // Atualizar status do item para aprovado
+                await db.atualizarStatusItemPacote(itemPacote.id, 'aprovado', 'Aprovado pelo administrador');
+                
+                // Descontar do estoque
+                await db.descontarEstoque(itemPacote.itemId, itemPacote.quantidade);
+                
+                // Registrar movimentação
+                await db.inserirMovimentacao({
+                    itemId: itemPacote.itemId,
+                    itemNome: item.nome,
+                    tipo: 'saida',
+                    quantidade: itemPacote.quantidade,
+                    destino: pacote.centroCusto,
+                    descricao: `Pacote ${id} - Aprovação em lote - Projeto: ${pacote.projeto}`
+                });
+
+                aprovados++;
+            } catch (error) {
+                console.error(`Erro ao processar item ${itemPacote.item_nome}:`, error);
+                erros.push(`${itemPacote.item_nome}: erro interno`);
+            }
+        }
+
+        // Verificar e atualizar status do pacote
+        await db.verificarEAtualizarStatusPacote(id);
+
+        res.json({
+            success: true,
+            message: `${aprovados} itens aprovados com sucesso`,
+            aprovados,
+            erros: erros.length > 0 ? erros : null
+        });
+    } catch (error) {
+        console.error('Erro ao aprovar todos os itens do pacote:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao aprovar itens do pacote'
+        });
+    }
+});
+
+app.post('/api/pacotes-requisicoes/:id/rejeitar-todos', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { motivo } = req.body;
+        
+        // Buscar todos os itens pendentes do pacote
+        const itens = await db.buscarItensDoPacote(id);
+        const itensPendentes = itens.filter(item => item.status === 'pendente');
+        
+        let rejeitados = 0;
+
+        // Rejeitar cada item pendente
+        for (const itemPacote of itensPendentes) {
+            await db.atualizarStatusItemPacote(itemPacote.id, 'rejeitado', motivo || 'Rejeitado pelo administrador');
+            rejeitados++;
+        }
+
+        // Verificar e atualizar status do pacote
+        await db.verificarEAtualizarStatusPacote(id);
+
+        res.json({
+            success: true,
+            message: `${rejeitados} itens rejeitados com sucesso`,
+            rejeitados
+        });
+    } catch (error) {
+        console.error('Erro ao rejeitar todos os itens do pacote:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao rejeitar itens do pacote'
+        });
+    }
+});
+
 // Rotas para movimentações
 app.get('/api/movimentacoes', async (req, res) => {
     try {
