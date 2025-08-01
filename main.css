@@ -645,3 +645,255 @@ tr:hover {
         grid-template-columns: 1fr;
     }
 }
+
+/* Estilos para pacotes de requisições */
+.itens-section {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 20px 0;
+    background-color: #f9f9f9;
+}
+
+.itens-section h3 {
+    margin-top: 0;
+    color: #333;
+    border-bottom: 2px solid #007bff;
+    padding-bottom: 10px;
+}
+
+.adicionar-item {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: white;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+}
+
+.itens-adicionados {
+    margin-top: 20px;
+}
+
+.itens-adicionados h4 {
+    margin-bottom: 15px;
+    color: #555;
+}
+
+.lista-itens {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.item-adicionado {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.item-info {
+    flex-grow: 1;
+}
+
+.item-nome {
+    font-weight: bold;
+    color: #333;
+}
+
+.item-quantidade {
+    color: #666;
+    font-size: 14px;
+}
+
+.btn-remover {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn-remover:hover {
+    background-color: #c82333;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+/* Modal para detalhes do pacote */
+.modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background-color: white;
+    margin: 5% auto;
+    padding: 20px;
+    border: none;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.close:hover,
+.close:focus {
+    color: #000;
+}
+
+.pacote-info {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+}
+
+.itens-pacote {
+    margin-top: 20px;
+}
+
+.item-pacote {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    margin-bottom: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background-color: white;
+}
+
+.item-pacote.aprovado {
+    border-left: 4px solid #28a745;
+    background-color: #f8fff9;
+}
+
+.item-pacote.rejeitado {
+    border-left: 4px solid #dc3545;
+    background-color: #fff8f8;
+}
+
+.item-pacote.pendente {
+    border-left: 4px solid #ffc107;
+    background-color: #fffdf0;
+}
+
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.status-pendente {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status-aprovado {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-rejeitado {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.status-parcialmente_aprovado {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+.acoes-item {
+    display: flex;
+    gap: 5px;
+}
+
+.btn-aprovar {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.btn-aprovar:hover {
+    background-color: #218838;
+}
+
+.btn-rejeitar {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.btn-rejeitar:hover {
+    background-color: #c82333;
+}
+
+.acoes-pacote {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    padding-top: 15px;
+    border-top: 1px solid #ddd;
+}
+
+.btn-view {
+    background-color: #17a2b8;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    text-decoration: none;
+}
+
+.btn-view:hover {
+    background-color: #138496;
+    color: white;
+}

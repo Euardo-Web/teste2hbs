@@ -38,20 +38,8 @@
 
         <!-- Nova Requisição -->
         <div id="novaRequisicao" class="content section active">
-            <h2>Nova Requisição</h2>
+            <h2>Nova Requisição (Pacote)</h2>
             <form id="requisicaoForm">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="itemRequisicao">Item:</label>
-                        <select id="itemRequisicao" required>
-                            <option value="">Selecione um item...</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="quantidadeRequisicao">Quantidade:</label>
-                        <input type="number" id="quantidadeRequisicao" required min="1">
-                    </div>
-                </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="centroCusto">Centro de Custo:</label>
@@ -66,23 +54,53 @@
                     <label for="justificativa">Justificativa:</label>
                     <textarea id="justificativa" rows="3"></textarea>
                 </div>
-                <button type="submit" class="btn">Enviar Requisição</button>
+                
+                <!-- Seção para adicionar itens -->
+                <div class="itens-section">
+                    <h3>Itens do Pacote</h3>
+                    <div class="adicionar-item">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="itemSelect">Item:</label>
+                                <select id="itemSelect">
+                                    <option value="">Selecione um item...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="quantidadeItem">Quantidade:</label>
+                                <input type="number" id="quantidadeItem" min="1">
+                            </div>
+                            <div class="form-group">
+                                <button type="button" id="adicionarItem" class="btn btn-secondary">Adicionar Item</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Lista de itens adicionados -->
+                    <div class="itens-adicionados">
+                        <h4>Itens no Pacote:</h4>
+                        <div id="listaItens" class="lista-itens"></div>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn">Enviar Pacote de Requisições</button>
             </form>
         </div>
 
         <!-- Minhas Requisições -->
         <div id="minhasRequisicoes" class="content section">
-            <h2>Minhas Requisições</h2>
+            <h2>Meus Pacotes de Requisições</h2>
             <div class="table-container">
                 <table id="tabelaMinhasRequisicoes">
                     <thead>
                         <tr>
                             <th>Data</th>
-                            <th>Item</th>
-                            <th>Quantidade</th>
                             <th>Centro de Custo</th>
+                            <th>Projeto</th>
+                            <th>Total de Itens</th>
                             <th>Status</th>
                             <th>Observações</th>
+                            <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -92,23 +110,32 @@
 
         <!-- Aprovar Requisições (Admin) -->
         <div id="aprovarRequisicoes" class="content section">
-            <h2>Aprovar Requisições</h2>
+            <h2>Aprovar Pacotes de Requisições</h2>
             <div class="table-container">
                 <table id="tabelaAprovarRequisicoes">
                     <thead>
                         <tr>
                             <th>Data</th>
                             <th>Solicitante</th>
-                            <th>Item</th>
-                            <th>Quantidade</th>
                             <th>Centro de Custo</th>
                             <th>Projeto</th>
-                            <th>Justificativa</th>
+                            <th>Total de Itens</th>
+                            <th>Pendentes</th>
+                            <th>Status</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Modal para ver detalhes do pacote -->
+        <div id="modalPacote" class="modal" style="display: none;">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2 id="modalTitulo">Detalhes do Pacote</h2>
+                <div id="modalConteudo"></div>
             </div>
         </div>
     </div>
