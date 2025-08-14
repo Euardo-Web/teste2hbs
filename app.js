@@ -1643,3 +1643,58 @@ window.onclick = function(event) {
         fecharModal();
     }
 }
+
+// ===== FUNÇÕES PARA RETIRADAS PENDENTES =====
+
+// Verificar e exibir retiradas pendentes
+async function verificarRetiradasPendentes() {
+    try {
+        const response = await fetch('/api/retiradas-pendentes');
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            const quantidade = result.data.length;
+            const card = document.getElementById('retiradasPendentesCard');
+            const contador = document.getElementById('contadorRetiradasPendentes');
+            
+            if (quantidade > 0) {
+                card.style.display = 'block';
+                contador.textContent = quantidade;
+                contador.className = quantidade > 5 ? 'badge badge-danger' : 'badge badge-warning';
+            } else {
+                card.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        console.error('Erro ao verificar retiradas pendentes:', error);
+        // Ocultar card se há erro
+        const card = document.getElementById('retiradasPendentesCard');
+        if (card) {
+            card.style.display = 'none';
+        }
+    }
+}
+
+// Adicionar verificação de retiradas pendentes ao inicializar
+document.addEventListener('DOMContentLoaded', function() {
+    // Verificar retiradas pendentes ao carregar a página
+    if (document.getElementById('retiradasPendentesCard')) {
+        verificarRetiradasPendentes();
+        
+        // Verificar periodicamente (a cada 30 segundos)
+        setInterval(verificarRetiradasPendentes, 30000);
+    }
+});
+
+// Adicionar verificação ao trocar para seção de retiradas
+const originalShowSection = window.showSection;
+if (originalShowSection) {
+    window.showSection = function(sectionId) {
+        originalShowSection(sectionId);
+        
+        // Se está na seção de retiradas, verificar pendentes
+        if (sectionId === 'retirada') {
+            setTimeout(verificarRetiradasPendentes, 100);
+        }
+    };
+}
