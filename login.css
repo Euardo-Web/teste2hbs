@@ -5,9 +5,9 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #73a5d8;
-    color: #1a1a1a;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-color, #f8fafc);
+    color: var(--text-color, #1e293b);
     line-height: 1.5;
     font-size: 14px;
     min-height: 100vh;
@@ -18,42 +18,63 @@ body {
 }
 
 .container {
-    background: #ffffff;
-    border-radius: 6px;
-    border: 1px solid #e1e5e9;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    overflow: hidden;
+    background: var(--surface-color, #ffffff);
+    border-radius: var(--border-radius, 8px);
+    border: 1px solid var(--border-color, #e2e8f0);
+    box-shadow: var(--shadow, 0 1px 3px rgba(0,0,0,0.1));
+    overflow-x: hidden;
+    overflow-y: auto;
     width: 100%;
-    max-width: 400px;
+    max-width: 440px;
     position: relative;
+    min-height: 520px;
+    max-height: 90vh;
 }
 
 .form-container {
-    padding: 40px;
-    min-height: 500px;
+    padding: 40px 40px 60px 40px;
+    opacity: 0;
+    visibility: hidden;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    transform: translateX(20px);
+    transition: all 0.3s ease-in-out;
+}
+
+.form-container.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
 }
 
 .logo {
     text-align: center;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
 }
 
 .logo h1 {
-    color: #1a1a1a;
-    font-size: 24px;
-    font-weight: 600;
-    letter-spacing: -0.5px;
-    margin-bottom: 5px;
+    color: var(--text-primary, #1e293b);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+    margin-bottom: 6px;
 }
 
 .logo p {
-    color: #6b7280;
-    font-size: 14px;
+    color: var(--text-secondary, #64748b);
+    font-size: 13px;
 }
 
 .form-group {
-    margin-bottom: 16px;
+    margin-bottom: 20px;
     position: relative;
+    width: 100%;
 }
 
 .form-group label {
@@ -66,18 +87,18 @@ body {
 
 .form-group input {
     width: 100%;
-    padding: 8px 12px;
+    padding: 12px 16px;
     border: 1px solid #d1d5db;
-    border-radius: 4px;
-    font-size: 13px;
+    border-radius: 6px;
+    font-size: 14px;
     background: #ffffff;
     transition: border-color 0.15s ease;
 }
 
 .form-group input:focus {
     outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .form-group input:hover {
@@ -104,7 +125,7 @@ body {
 .admin-toggle label {
     margin: 0;
     font-size: 13px;
-    color: #6b7280;
+    color: var(--text-secondary, #64748b);
     font-weight: 500;
 }
 
@@ -124,24 +145,24 @@ body {
 
 .btn {
     width: 100%;
-    padding: 8px 16px;
-    background: #2563eb;
+    padding: 12px 16px;
+    background: var(--primary-color, #1e40af);
     color: white;
     border: none;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 500;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
     transition: background-color 0.15s ease;
     margin-bottom: 16px;
 }
 
 .btn:hover {
-    background: #1d4ed8;
+    background: var(--primary-hover, #1e3a8a);
 }
 
 .btn:active {
-    background: #1e40af;
+    background: #1e3a8a;
 }
 
 .btn:disabled {
@@ -156,7 +177,7 @@ body {
 }
 
 .switch-form p {
-    color: #6b7280;
+    color: var(--text-secondary, #64748b);
     font-size: 13px;
 }
 
@@ -184,24 +205,24 @@ body {
 }
 
 .alert-success {
-    background: #d1fae5;
+    background: #ecfdf5;
     color: #065f46;
     border-left-color: #10b981;
-    border: 1px solid #6ee7b7;
+    border: 1px solid #d1fae5;
 }
 
 .alert-error {
-    background: #fee2e2;
+    background: #fef2f2;
     color: #991b1b;
     border-left-color: #dc2626;
-    border: 1px solid #fca5a5;
+    border: 1px solid #fee2e2;
 }
 
 .alert-info {
-    background: #dbeafe;
+    background: #eff6ff;
     color: #1e40af;
-    border-left-color: #2563eb;
-    border: 1px solid #93c5fd;
+    border-left-color: #3b82f6;
+    border: 1px solid #dbeafe;
 }
 
 @keyframes fadeIn {
@@ -210,13 +231,21 @@ body {
 }
 
 .loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
     text-align: center;
-    padding: 20px;
+    background: #ffffff;
 }
 
 .loading.show {
-    display: block;
+    display: flex;
 }
 
 .spinner {
@@ -235,28 +264,37 @@ body {
 }
 
 .user-info {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     text-align: center;
     padding: 40px;
+    background: #ffffff;
 }
 
 .user-info.show {
-    display: block;
+    display: flex;
 }
 
 .user-info h2 {
-    color: #1a1a1a;
+    color: var(--text-primary, #1e293b);
     margin-bottom: 16px;
     font-size: 20px;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 .user-badge {
     display: inline-block;
-    padding: 4px 8px;
+    padding: 6px 10px;
     border-radius: 12px;
-    font-size: 11px;
-    font-weight: 500;
+    font-size: 12px;
+    font-weight: 600;
     margin-bottom: 16px;
     border: 1px solid;
 }
@@ -290,17 +328,38 @@ body {
     background: #059669;
 }
 
+/* Utilidades */
+.text-muted { color: var(--text-secondary, #64748b); }
+
+/* Logo width styles */
+.logo-70 {
+    width: 50%;
+}
+
+.hidden { display: none !important; }
+
 @media (max-width: 480px) {
     .container {
         margin: 10px;
         border-radius: 6px;
+        height: calc(100vh - 20px);
+        max-height: none;
     }
     
     .form-container {
-        padding: 24px 20px;
+        padding: 24px 20px 40px 20px;
     }
     
     .logo h1 {
         font-size: 20px;
+    }
+    
+    .form-group {
+        margin-bottom: 16px;
+    }
+    
+    .switch-form {
+        margin-top: 24px;
+        padding-bottom: 16px;
     }
 }

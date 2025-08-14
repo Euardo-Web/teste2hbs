@@ -1,7 +1,9 @@
+
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const db = require('./database');
+const ExcelJS = require('exceljs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,6 +15,35 @@ app.use(express.urlencoded({ extended: true }));
 
 // Servir arquivos estáticos
 app.use(express.static(__dirname));
+
+// Rota de health check
+app.get('/api/health', async (req, res) => {
+    try {
+        // Verificar conexão com o banco de dados
+        let databaseStatus = { status: 'unknown', error: null };
+        try {
+            await db.run('SELECT 1');
+            databaseStatus = { status: 'connected' };
+        } catch (dbError) {
+            databaseStatus = { status: 'disconnected', error: dbError.message };
+        }
+
+        res.json({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            database: databaseStatus,
+            uptime: process.uptime(),
+            memory: process.memoryUsage()
+        });
+    } catch (error) {
+        console.error('Erro no health check:', error);
+        res.status(500).json({
+            status: 'error',
+            timestamp: new Date().toISOString(),
+            error: error.message
+        });
+    }
+});
 
 // Rotas de autenticação
 app.post('/api/login', async (req, res) => {
@@ -100,6 +131,20 @@ app.get('/api/itens', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Erro ao buscar itens'
+        });
+    }
+});
+
+// Rota alternativa para estoque (usada pelo dashboard)
+app.get('/api/estoque', async (req, res) => {
+    try {
+        const itens = await db.buscarItens();
+        res.json(itens);
+    } catch (error) {
+        console.error('Erro ao buscar estoque:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar estoque'
         });
     }
 });
@@ -210,152 +255,208 @@ app.post('/api/unificar-itens', async (req, res) => {
     }
 });
 
-// Rotas para requisições
-app.post('/api/requisicoes', async (req, res) => {
+// REMOVIDO: Rotas obsoletas de requisições normais
+// As requisições agora são feitas apenas através de pacotes
+
+// Rotas para pacotes de requisições
+app.post('/api/pacotes', async (req, res) => {
     try {
-        const { userId, itemId, quantidade, centroCusto, projeto, justificativa } = req.body;
+        const { userId, centroCusto, projeto, justificativa, itens } = req.body;
         
-        if (!userId || !itemId || !quantidade || !centroCusto || !projeto) {
+        if (!userId || !centroCusto || !projeto || !justificativa || !itens || !Array.isArray(itens) || itens.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Todos os campos obrigatórios devem ser preenchidos'
+                message: 'Dados inválidos para criar pacote'
             });
         }
 
-        // Verificar se o item existe e tem quantidade suficiente
-        const item = await db.buscarItemPorId(itemId);
-        if (!item) {
-            return res.status(404).json({
-                success: false,
-                message: 'Item não encontrado'
-            });
+        // Verificar disponibilidade de todos os itens
+        for (const item of itens) {
+            const itemEstoque = await db.buscarItemPorId(item.id);
+            if (!itemEstoque) {
+                return res.status(404).json({
+                    success: false,
+                    message: `Item ${item.nome} não encontrado`
+                });
+            }
+            if (itemEstoque.quantidade < item.quantidade) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Quantidade indisponível para ${item.nome}. Disponível: ${itemEstoque.quantidade}`
+                });
+            }
         }
 
-        if (item.quantidade < quantidade) {
-            return res.status(400).json({
-                success: false,
-                message: 'Quantidade insuficiente no estoque'
-            });
-        }
-
-        const requisicaoId = await db.criarRequisicao({
+        // Criar pacote
+        const pacoteId = await db.criarPacoteRequisicao({
             userId,
-            itemId,
-            quantidade,
             centroCusto,
             projeto,
             justificativa
         });
 
+        // Criar requisições individuais para cada item
+        const promessas = itens.map(item => {
+            return db.criarRequisicao({
+                userId,
+                itemId: item.id,
+                quantidade: item.quantidade,
+                centroCusto,
+                projeto,
+                justificativa: `PACOTE: ${justificativa}`,
+                pacoteId
+            });
+        });
+
+        await Promise.all(promessas);
+
         res.json({
             success: true,
-            requisicaoId: requisicaoId,
-            message: 'Requisição criada com sucesso'
+            message: 'Pacote criado com sucesso',
+            pacoteId
         });
     } catch (error) {
-        console.error('Erro ao criar requisição:', error);
+        console.error('Erro ao criar pacote:', error);
         res.status(500).json({
             success: false,
-            message: 'Erro ao criar requisição'
+            message: 'Erro interno do servidor'
         });
     }
 });
 
-app.get('/api/requisicoes/usuario/:userId', async (req, res) => {
+// Rota para buscar pacotes pendentes
+app.get('/api/pacotes/pendentes', async (req, res) => {
     try {
-        const { userId } = req.params;
-        const requisicoes = await db.buscarRequisicoesUsuario(userId);
-        res.json(requisicoes);
+        const pacotes = await db.buscarPacotesPendentes();
+        res.json(pacotes);
     } catch (error) {
-        console.error('Erro ao buscar requisições do usuário:', error);
+        console.error('Erro ao buscar pacotes pendentes:', error);
         res.status(500).json({
             success: false,
-            message: 'Erro ao buscar requisições'
+            message: 'Erro ao buscar pacotes pendentes'
         });
     }
 });
 
-app.get('/api/requisicoes/pendentes', async (req, res) => {
-    try {
-        const requisicoes = await db.buscarRequisicoesPendentes();
-        res.json(requisicoes);
-    } catch (error) {
-        console.error('Erro ao buscar requisições pendentes:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Erro ao buscar requisições pendentes'
-        });
-    }
-});
-
-app.post('/api/requisicoes/:id/aprovar', async (req, res) => {
+// Rota para buscar itens de um pacote
+app.get('/api/pacotes/:id/itens', async (req, res) => {
     try {
         const { id } = req.params;
-        
-        // Buscar dados da requisição corretamente
-        const requisicao = await db.buscarRequisicaoPorId(id);
-        
-        if (!requisicao) {
-            return res.status(404).json({
-                success: false,
-                message: 'Requisição não encontrada'
-            });
-        }
-
-        // Verificar se ainda há quantidade no estoque
-        const item = await db.buscarItemPorId(requisicao.itemId);
-        if (item.quantidade < requisicao.quantidade) {
-            return res.status(400).json({
-                success: false,
-                message: 'Quantidade insuficiente no estoque'
-            });
-        }
-
-        // Atualizar status da requisição
-        await db.atualizarStatusRequisicao(id, 'aprovada', 'Aprovada pelo administrador');
-        
-        // Descontar do estoque
-        await db.descontarEstoque(requisicao.itemId, requisicao.quantidade);
-        
-        // Registrar movimentação
-        await db.inserirMovimentacao({
-            itemId: requisicao.itemId,
-            itemNome: item.nome,
-            tipo: 'saida',
-            quantidade: requisicao.quantidade,
-            destino: requisicao.centroCusto,
-            descricao: `Requisição aprovada - Projeto: ${requisicao.projeto}`
-        });
-
-        res.json({
-            success: true,
-            message: 'Requisição aprovada com sucesso'
-        });
+        const itens = await db.buscarItensPacote(id);
+        res.json(itens);
     } catch (error) {
-        console.error('Erro ao aprovar requisição:', error);
+        console.error('Erro ao buscar itens do pacote:', error);
         res.status(500).json({
             success: false,
-            message: 'Erro ao aprovar requisição'
+            message: 'Erro ao buscar itens do pacote'
         });
     }
 });
 
-app.post('/api/requisicoes/:id/rejeitar', async (req, res) => {
+// Rota para buscar pacotes do usuário
+app.get('/api/pacotes/usuario/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const pacotes = await db.buscarPacotesUsuario(userId);
+        res.json(pacotes);
+    } catch (error) {
+        console.error('Erro ao buscar pacotes do usuário:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar pacotes do usuário'
+        });
+    }
+});
+
+// Rota para aprovar pacote completo
+app.post('/api/pacotes/:id/aprovar', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { aprovador_id, aprovador_nome } = req.body || {};
+        await db.aprovarPacoteCompleto(id, { aprovador_id, aprovador_nome });
+        res.json({
+            success: true,
+            message: 'Pacote aprovado com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao aprovar pacote:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Erro ao aprovar pacote'
+        });
+    }
+});
+
+// Rota para aprovar itens específicos do pacote
+app.post('/api/pacotes/:id/aprovar-itens', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { itemIds, aprovador_id, aprovador_nome } = req.body;
+        
+        if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Lista de itens é obrigatória'
+            });
+        }
+
+        await db.aprovarItensPacote(id, itemIds, { aprovador_id, aprovador_nome });
+        res.json({
+            success: true,
+            message: 'Itens aprovados com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao aprovar itens do pacote:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Erro ao aprovar itens do pacote'
+        });
+    }
+});
+
+// Rota para negar itens específicos do pacote
+app.post('/api/pacotes/:id/negar-itens', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { itemIds, motivo } = req.body;
+        
+        if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Lista de itens é obrigatória'
+            });
+        }
+
+        await db.negarItensPacote(id, itemIds, motivo || 'Negado pelo administrador');
+        res.json({
+            success: true,
+            message: 'Itens negados com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao negar itens do pacote:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Erro ao negar itens do pacote'
+        });
+    }
+});
+
+// Rota para rejeitar pacote completo
+app.post('/api/pacotes/:id/rejeitar', async (req, res) => {
     try {
         const { id } = req.params;
         const { motivo } = req.body;
         
-        await db.atualizarStatusRequisicao(id, 'rejeitada', motivo || 'Rejeitada pelo administrador');
-        
+        await db.rejeitarPacoteCompleto(id, motivo || 'Rejeitado pelo administrador');
         res.json({
             success: true,
-            message: 'Requisição rejeitada com sucesso'
+            message: 'Pacote rejeitado com sucesso'
         });
     } catch (error) {
-        console.error('Erro ao rejeitar requisição:', error);
+        console.error('Erro ao rejeitar pacote:', error);
         res.status(500).json({
             success: false,
-            message: 'Erro ao rejeitar requisição'
+            message: 'Erro ao rejeitar pacote'
         });
     }
 });
@@ -363,8 +464,23 @@ app.post('/api/requisicoes/:id/rejeitar', async (req, res) => {
 // Rotas para movimentações
 app.get('/api/movimentacoes', async (req, res) => {
     try {
-        const { dias = 30 } = req.query;
-        const movimentacoes = await db.buscarMovimentacoes(dias);
+        const { dias = 30, limit, data } = req.query;
+        let movimentacoes = await db.buscarMovimentacoes(dias);
+        
+        // Filtrar por data específica se fornecida
+        if (data) {
+            const dataFiltro = new Date(data);
+            movimentacoes = movimentacoes.filter(mov => {
+                const movData = new Date(mov.data);
+                return movData.toDateString() === dataFiltro.toDateString();
+            });
+        }
+        
+        // Limitar número de resultados se especificado
+        if (limit) {
+            movimentacoes = movimentacoes.slice(0, parseInt(limit));
+        }
+        
         res.json(movimentacoes);
     } catch (error) {
         console.error('Erro ao buscar movimentações:', error);
@@ -378,18 +494,21 @@ app.get('/api/movimentacoes', async (req, res) => {
 // Rota para exportar banco de dados
 app.get('/api/exportar-banco', async (req, res) => {
     try {
-        // Buscar todos os dados necessários
-        const itens = await db.buscarItens();
-        const movimentacoes = await db.buscarMovimentacoes();
+        // Usar a nova função de exportação que inclui todos os dados
+        const dadosExportacao = await db.exportarDados();
 
-        // Criar objeto com todos os dados
-        const dadosExportacao = {
-            data_exportacao: new Date().toISOString(),
-            itens: itens,
-            movimentacoes: movimentacoes
+        // Adicionar informações do servidor
+        dadosExportacao.metadata.server_info = {
+            node_version: process.version,
+            platform: process.platform,
+            memory_usage: process.memoryUsage(),
+            uptime: process.uptime()
         };
 
-        res.json(dadosExportacao);
+        res.json({
+            success: true,
+            data: dadosExportacao
+        });
     } catch (error) {
         console.error('Erro ao exportar banco:', error);
         res.status(500).json({
@@ -404,19 +523,71 @@ app.get('/api/exportar-banco', async (req, res) => {
 app.post('/api/importar-banco', async (req, res) => {
     try {
         const dados = req.body;
-        if (!dados || !Array.isArray(dados.itens)) {
+
+        // Verificações de segurança e validação
+        if (!dados || !dados.data || !dados.data.metadata) {
             return res.status(400).json({
                 success: false,
-                error: 'Formato de dados inválido: não contém itens.'
+                error: 'Formato de dados inválido: dados de sincronização ausentes ou malformados.'
             });
         }
-        // Importar dados usando a função do banco
-        const resultado = await db.importarDados(dados);
-        res.json({
-            success: true,
-            itensImportados: resultado.itensImportados,
-            movimentacoesImportadas: resultado.movimentacoesImportadas
-        });
+
+        // Verificar versão dos dados
+        const versaoAtual = '1.1';
+        if (dados.data.metadata.versao !== versaoAtual) {
+            return res.status(400).json({
+                success: false,
+                error: `Versão incompatível. Esperada: ${versaoAtual}, Recebida: ${dados.data.metadata.versao}`
+            });
+        }
+
+        // Verificar integridade dos dados
+        try {
+            // Importar dados usando a função melhorada do banco
+            const resultado = await db.importarDados(dados.data);
+
+            // Registrar log da sincronização
+            await db.run(`
+                INSERT INTO sincronizacao_log (
+                    timestamp, 
+                    origem, 
+                    hash_dados, 
+                    status,
+                    detalhes
+                ) VALUES (?, ?, ?, ?, ?)
+            `, [
+                new Date().toISOString(),
+                req.ip,
+                dados.data.metadata.hash,
+                'sucesso',
+                JSON.stringify(resultado)
+            ]);
+
+            res.json({
+                success: true,
+                message: 'Dados importados com sucesso',
+                resultado
+            });
+        } catch (error) {
+            // Registrar falha na sincronização
+            await db.run(`
+                INSERT INTO sincronizacao_log (
+                    timestamp,
+                    origem,
+                    hash_dados,
+                    status,
+                    detalhes
+                ) VALUES (?, ?, ?, ?, ?)
+            `, [
+                new Date().toISOString(),
+                req.ip,
+                dados.data.metadata.hash,
+                'erro',
+                error.message
+            ]);
+
+            throw error;
+        }
     } catch (error) {
         console.error('Erro ao importar banco:', error);
         res.status(500).json({
@@ -476,6 +647,7 @@ app.post('/api/itens/:id/retirar', async (req, res) => {
     try {
         const { id } = req.params;
         const { quantidade, destino, observacao } = req.body;
+        const { usuario_id, usuario_nome } = req.body;
 
         if (!quantidade || !destino) {
             return res.status(400).json({
@@ -501,24 +673,36 @@ app.post('/api/itens/:id/retirar', async (req, res) => {
             });
         }
 
-        // Descontar do estoque
-        await db.descontarEstoque(id, quantidade);
+        // Iniciar transação para garantir consistência
+        await db.run('BEGIN TRANSACTION');
 
-        // Registrar movimentação
-        await db.inserirMovimentacao({
-            itemId: item.id,
-            itemNome: item.nome,
-            tipo: 'saida',
-            quantidade: quantidade,
-            destino: destino,
-            descricao: observacao || 'Retirada direta do estoque'
-        });
+        try {
+            // Descontar do estoque
+            await db.descontarEstoque(id, quantidade);
 
-        res.json({
-            success: true,
-            message: 'Retirada realizada com sucesso',
-            novaQuantidade: item.quantidade - quantidade
-        });
+            // Registrar movimentação
+            await db.inserirMovimentacao({
+                itemId: parseInt(id),
+                itemNome: item.nome,
+                tipo: 'saida',
+                quantidade: parseInt(quantidade),
+                destino: destino,
+                descricao: observacao || 'Retirada direta do estoque',
+                usuario_id: usuario_id || null,
+                usuario_nome: usuario_nome || null
+            });
+
+            await db.run('COMMIT');
+
+            res.json({
+                success: true,
+                message: 'Retirada realizada com sucesso',
+                novaQuantidade: item.quantidade - quantidade
+            });
+        } catch (error) {
+            await db.run('ROLLBACK');
+            throw error;
+        }
     } catch (error) {
         console.error('Erro ao realizar retirada:', error);
         res.status(500).json({
@@ -781,6 +965,473 @@ app.delete('/api/itens/:id', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Erro ao remover item'
+        });
+    }
+});
+
+// ===== NOVAS ROTAS PARA CONFIGURAÇÕES E RELATÓRIOS =====
+
+// Rotas para gerenciar projetos
+app.post('/api/projetos', async (req, res) => {
+    try {
+        const { nome, descricao } = req.body;
+        
+        if (!nome) {
+            return res.status(400).json({
+                success: false,
+                message: 'Nome do projeto é obrigatório'
+            });
+        }
+
+        const projeto = await db.criarProjeto({ nome, descricao });
+        
+        res.json({
+            success: true,
+            projeto,
+            message: 'Projeto criado com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao criar projeto:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao criar projeto'
+        });
+    }
+});
+
+app.get('/api/projetos', async (req, res) => {
+    try {
+        const projetos = await db.buscarProjetos();
+        res.json(projetos);
+    } catch (error) {
+        console.error('Erro ao buscar projetos:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar projetos'
+        });
+    }
+});
+
+app.put('/api/projetos/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nome, descricao, ativo } = req.body;
+        
+        await db.atualizarProjeto(id, { nome, descricao, ativo });
+        
+        res.json({
+            success: true,
+            message: 'Projeto atualizado com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao atualizar projeto:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao atualizar projeto'
+        });
+    }
+});
+
+app.delete('/api/projetos/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        await db.removerProjeto(id);
+        
+        res.json({
+            success: true,
+            message: 'Projeto removido com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao remover projeto:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao remover projeto'
+        });
+    }
+});
+
+// Rotas para gerenciar centros de custo
+app.post('/api/centros-custo', async (req, res) => {
+    try {
+        const { nome, descricao } = req.body;
+        
+        if (!nome) {
+            return res.status(400).json({
+                success: false,
+                message: 'Nome do centro de custo é obrigatório'
+            });
+        }
+
+        const centroCusto = await db.criarCentroCusto({ nome, descricao });
+        
+        res.json({
+            success: true,
+            centroCusto,
+            message: 'Centro de custo criado com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao criar centro de custo:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao criar centro de custo'
+        });
+    }
+});
+
+app.get('/api/centros-custo', async (req, res) => {
+    try {
+        const centrosCusto = await db.buscarCentrosCusto();
+        res.json(centrosCusto);
+    } catch (error) {
+        console.error('Erro ao buscar centros de custo:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar centros de custo'
+        });
+    }
+});
+
+app.put('/api/centros-custo/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { nome, descricao, ativo } = req.body;
+        
+        await db.atualizarCentroCusto(id, { nome, descricao, ativo });
+        
+        res.json({
+            success: true,
+            message: 'Centro de custo atualizado com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao atualizar centro de custo:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao atualizar centro de custo'
+        });
+    }
+});
+
+app.delete('/api/centros-custo/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        await db.removerCentroCusto(id);
+        
+        res.json({
+            success: true,
+            message: 'Centro de custo removido com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao remover centro de custo:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao remover centro de custo'
+        });
+    }
+});
+
+// Rota para buscar detalhes completos de um pacote
+app.get('/api/pacotes/:id/detalhes', async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log('Buscando detalhes do pacote:', id);
+        
+        const pacote = await db.buscarPacoteDetalhado(id);
+        console.log('Pacote encontrado:', pacote);
+        
+        if (!pacote) {
+            return res.status(404).json({
+                success: false,
+                message: 'Pacote não encontrado'
+            });
+        }
+        
+        res.json({
+            success: true,
+            pacote
+        });
+    } catch (error) {
+        console.error('Erro ao buscar detalhes do pacote:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar detalhes do pacote'
+        });
+    }
+});
+
+// Rota para exportar relatório de pacote em CSV
+app.get('/api/pacotes/:id/exportar-csv', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const pacote = await db.buscarPacoteDetalhado(id);
+        
+        if (!pacote) {
+            return res.status(404).json({
+                success: false,
+                message: 'Pacote não encontrado'
+            });
+        }
+        
+        // Criar cabeçalho do CSV
+        let csvContent = 'ID do Pacote,Status,Data de Criação,Data de Aprovação,Solicitante,Email do Solicitante,Centro de Custo,Projeto,Justificativa,Observações\n';
+        
+        // Adicionar dados do pacote
+        csvContent += `"${pacote.id}","${pacote.status || ''}","${pacote.data_criacao || ''}","${pacote.data_aprovacao || ''}","${pacote.solicitante_nome || ''}","${pacote.solicitante_email || ''}","${pacote.centroCusto || ''}","${pacote.projeto || ''}","${pacote.justificativa || ''}","${pacote.observacoes || ''}"\n\n`;
+        
+        // Adicionar cabeçalho dos itens
+        csvContent += 'ID do Item,Nome do Item,Descrição do Item,Quantidade Solicitada,Quantidade Disponível,Status do Item,Observações\n';
+        
+        // Adicionar dados dos itens
+        if (pacote.itens && pacote.itens.length > 0) {
+            pacote.itens.forEach(item => {
+                csvContent += `"${item.id}","${item.item_nome || ''}","${item.item_descricao || ''}","${item.quantidade || 0}","${item.estoque_disponivel || 0}","${item.status || ''}","${item.observacoes || ''}"\n`;
+            });
+        }
+        
+        // Configurar headers para download
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="relatorio-pacote-${id}-${new Date().toISOString().split('T')[0]}.csv"`);
+        
+        res.send(csvContent);
+        
+    } catch (error) {
+        console.error('Erro ao exportar relatório CSV:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao exportar relatório CSV'
+        });
+    }
+});
+
+// Rota para editar quantidades de itens do pacote (sem aprovar)
+app.post('/api/pacotes/:id/editar-quantidades', async (req, res) => {
+
+// Rota para exportar relatório de pacote em XLSX
+app.get('/api/pacotes/:id/exportar-xlsx', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const pacote = await db.buscarPacoteDetalhado(id);
+        if (!pacote) {
+            return res.status(404).json({
+                success: false,
+                message: 'Pacote não encontrado'
+            });
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Relatório do Pacote');
+
+        // Cabeçalho do pacote
+        sheet.addRow(['ID do Pacote', 'Status', 'Data de Criação', 'Data de Aprovação', 'Solicitante', 'Email do Solicitante', 'Centro de Custo', 'Projeto', 'Justificativa', 'Observações']);
+        sheet.addRow([
+            pacote.id,
+            pacote.status || '',
+            pacote.data_criacao || '',
+            pacote.data_aprovacao || '',
+            pacote.solicitante_nome || '',
+            pacote.solicitante_email || '',
+            pacote.centroCusto || '',
+            pacote.projeto || '',
+            pacote.justificativa || '',
+            pacote.observacoes || ''
+        ]);
+        sheet.addRow([]);
+
+        // Cabeçalho dos itens
+        sheet.addRow(['ID do Item', 'Nome do Item', 'Descrição do Item', 'Quantidade Solicitada', 'Quantidade Disponível', 'Status do Item', 'Observações']);
+        if (pacote.itens && pacote.itens.length > 0) {
+            pacote.itens.forEach(item => {
+                sheet.addRow([
+                    item.id,
+                    item.item_nome || '',
+                    item.item_descricao || '',
+                    item.quantidade || 0,
+                    item.estoque_disponivel || 0,
+                    item.status || '',
+                    item.observacoes || ''
+                ]);
+            });
+        }
+
+        // Ajustar largura das colunas
+        sheet.columns.forEach(column => {
+            let maxLength = 10;
+            column.eachCell({ includeEmpty: true }, cell => {
+                maxLength = Math.max(maxLength, (cell.value ? cell.value.toString().length : 0));
+            });
+            column.width = maxLength + 2;
+        });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="relatorio-pacote-${id}-${new Date().toISOString().split('T')[0]}.xlsx"`);
+
+    // Gerar buffer e enviar
+    const buffer = await workbook.xlsx.writeBuffer();
+    res.send(Buffer.from(buffer));
+    } catch (error) {
+        console.error('Erro ao exportar relatório XLSX:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao exportar relatório XLSX'
+        });
+    }
+});
+    try {
+        const { id } = req.params;
+        const { itensEditados } = req.body;
+        
+        if (!itensEditados || !Array.isArray(itensEditados)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Lista de itens editados é obrigatória'
+            });
+        }
+
+        await db.editarQuantidadesPacote(id, itensEditados);
+        
+        res.json({
+            success: true,
+            message: 'Quantidades editadas com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao editar quantidades:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao editar quantidades'
+        });
+    }
+});
+
+// Rota para aprovar itens com quantidade personalizada
+app.post('/api/pacotes/:id/aprovar-itens-quantidade', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { itensAprovados, aprovador_id, aprovador_nome } = req.body;
+        
+        if (!itensAprovados || !Array.isArray(itensAprovados)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Lista de itens aprovados é obrigatória'
+            });
+        }
+
+        await db.aprovarItensPacoteComQuantidade(id, itensAprovados, { aprovador_id, aprovador_nome });
+        
+        res.json({
+            success: true,
+            message: 'Itens aprovados com sucesso'
+        });
+    } catch (error) {
+        console.error('Erro ao aprovar itens:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao aprovar itens'
+        });
+    }
+});
+
+// Rota para buscar movimentações por usuário
+app.get('/api/movimentacoes/usuario/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { dias } = req.query;
+        
+        const movimentacoes = await db.buscarMovimentacoesPorUsuario(userId, dias || 30);
+        
+        res.json({
+            success: true,
+            movimentacoes
+        });
+    } catch (error) {
+        console.error('Erro ao buscar movimentações do usuário:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar movimentações do usuário'
+        });
+    }
+});
+
+// Rota para buscar todos os usuários
+app.get('/api/usuarios', async (req, res) => {
+    try {
+        const usuarios = await db.buscarTodosUsuarios();
+        
+        res.json({
+            success: true,
+            usuarios
+        });
+    } catch (error) {
+        console.error('Erro ao buscar usuários:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar usuários'
+        });
+    }
+});
+
+// Rota de teste para verificar pacotes
+app.get('/api/teste-pacotes', async (req, res) => {
+    try {
+        const pacotes = await db.buscarPacotesPendentes();
+        console.log('Pacotes encontrados:', pacotes);
+        
+        res.json({
+            success: true,
+            pacotes
+        });
+    } catch (error) {
+        console.error('Erro ao buscar pacotes:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao buscar pacotes'
+        });
+    }
+});
+
+// Rota para criar pacote de teste
+app.post('/api/criar-pacote-teste', async (req, res) => {
+    try {
+        // Primeiro, verificar se há itens no banco
+        const itens = await db.buscarItens();
+        if (itens.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Não há itens no banco para criar um pacote de teste'
+            });
+        }
+        
+        // Criar um pacote de teste
+        const pacoteId = await db.criarPacoteRequisicao({
+            userId: 1, // Assumindo que existe um usuário com ID 1
+            centroCusto: 'Centro de Custo Teste',
+            projeto: 'Projeto Teste',
+            justificativa: 'Pacote de teste para verificar funcionalidades'
+        });
+        
+        // Criar uma requisição de teste para o primeiro item
+        const item = itens[0];
+        await db.criarRequisicao({
+            userId: 1,
+            itemId: item.id,
+            quantidade: 5,
+            centroCusto: 'Centro de Custo Teste',
+            projeto: 'Projeto Teste',
+            justificativa: 'Requisição de teste',
+            pacoteId: pacoteId
+        });
+        
+        res.json({
+            success: true,
+            message: 'Pacote de teste criado com sucesso',
+            pacoteId
+        });
+    } catch (error) {
+        console.error('Erro ao criar pacote de teste:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Erro ao criar pacote de teste'
         });
     }
 });
