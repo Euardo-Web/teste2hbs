@@ -1603,7 +1603,7 @@ function aprovarItensPacoteComQuantidade(pacoteId, itensAprovados, aprovador) {
                     promises.push(new Promise((res, rej) => {
                         db.run(
                             `UPDATE requisicoes SET status = 'aprovado_pendente_retirada', observacoes = 'Aprovado - Aguardando confirmação de retirada' WHERE id = ?`,
-                            [item.item_id],
+                            [reqData.id],
                             function(err) { if (err) rej(err); else res(this.changes); }
                         );
                     }));
