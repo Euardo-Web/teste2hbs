@@ -1776,7 +1776,14 @@ async function confirmarRetirada(retiradaId) {
     }
     
     try {
-        const usuario = JSON.parse(localStorage.getItem('userData'));
+        const usuario = JSON.parse(sessionStorage.getItem('currentUser') || '{}');
+        
+        // Verificar se o usuário está logado
+        if (!usuario || !usuario.id) {
+            mostrarAlerta('Erro: Usuário não está logado. Faça login novamente.', 'error');
+            window.location.href = 'login.html';
+            return;
+        }
         
         const response = await fetch(`/api/retiradas-pendentes/${retiradaId}/confirmar`, {
             method: 'POST',
@@ -1850,7 +1857,14 @@ function fecharModalCancelamento() {
 async function confirmarCancelamento(retiradaId) {
     try {
         const motivo = document.getElementById('motivoCancelamento').value.trim();
-        const usuario = JSON.parse(localStorage.getItem('userData'));
+        const usuario = JSON.parse(sessionStorage.getItem('currentUser') || '{}');
+        
+        // Verificar se o usuário está logado
+        if (!usuario || !usuario.id) {
+            mostrarAlerta('Erro: Usuário não está logado. Faça login novamente.', 'error');
+            window.location.href = 'login.html';
+            return;
+        }
         
         const response = await fetch(`/api/retiradas-pendentes/${retiradaId}/cancelar`, {
             method: 'POST',
