@@ -388,7 +388,7 @@
 
         // Função para verificar se o usuário é admin
         function isUserAdmin() {
-            const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+            const userData = JSON.parse(sessionStorage.getItem('currentUser') || '{}');
             return userData.userType === 'admin';
         }
 
@@ -409,7 +409,7 @@
 
         // Função para carregar dados do usuário logado
         function carregarDadosUsuario() {
-            const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+            const userData = JSON.parse(sessionStorage.getItem('currentUser') || '{}');
             
             if (!userData.id) {
                 document.getElementById('accessDenied').classList.remove('hidden');
