@@ -1929,6 +1929,8 @@ body {
 .status-rejeitado { background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 9999px; font-weight: 600; }
 .status-parcialmente-aprovado { background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 9999px; font-weight: 600; }
 .status-pendente { background: #fef3c7; color: #92400e; padding: 4px 8px; border-radius: 9999px; font-weight: 600; }
+.status-aprovado-pendente-retirada { background: #fbbf24; color: #92400e; padding: 4px 8px; border-radius: 9999px; font-weight: 600; }
+.status-parcialmente-aprovado-pendente-retirada { background: #a78bfa; color: #3730a3; padding: 4px 8px; border-radius: 9999px; font-weight: 600; }
 
 /* Badges gerais */
 .badge {
