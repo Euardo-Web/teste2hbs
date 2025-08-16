@@ -996,28 +996,30 @@
                 
                 // Aprovar todas as requisições do pacote
                 for (const req of requisicoes) {
-                    await atualizarStatusRequisicao(req.id, 'aprovado');
-                    await descontarEstoque(req.itemId, req.quantidade);
+                    // Atualizar status da requisição para "aprovado_pendente_retirada"
+                    await atualizarStatusRequisicao(req.id, 'aprovado_pendente_retirada');
                     
-                    // Registrar movimentação para cada item aprovado
-                    await inserirMovimentacao({
-                        itemId: req.itemId,
-                        itemNome: req.item_nome,
-                        tipo: 'saida',
+                    // Criar retirada pendente em vez de debitar diretamente do estoque
+                    await criarRetiradaPendente({
+                        requisicao_id: req.id,
+                        item_id: req.itemId,
+                        item_nome: req.item_nome,
                         quantidade: req.quantidade,
-                        destino: pacote.centroCusto,
-                        descricao: `Requisição em pacote aprovada - Projeto: ${pacote.projeto} - ${pacote.justificativa}`,
+                        centro_custo: pacote.centroCusto,
+                        projeto: pacote.projeto,
+                        justificativa: pacote.justificativa,
                         usuario_id: pacote.userId,
                         usuario_nome: (solicitante && solicitante.name) || null,
                         aprovador_id: aprovador && aprovador.aprovador_id ? aprovador.aprovador_id : null,
-                        aprovador_nome: aprovador && aprovador.aprovador_nome ? aprovador.aprovador_nome : null
+                        aprovador_nome: aprovador && aprovador.aprovador_nome ? aprovador.aprovador_nome : null,
+                        observacoes: 'Aprovado - Aguardando confirmação de retirada'
                     });
                 }
                 
                 // Atualizar status e aprovador do pacote
                 await run(
                     'UPDATE pacotes_requisicao SET status = ?, data_aprovacao = datetime("now"), aprovador_id = ?, aprovador_nome = ? WHERE id = ?',
-                    ['aprovado', aprovador && aprovador.aprovador_id ? aprovador.aprovador_id : null, aprovador && aprovador.aprovador_nome ? aprovador.aprovador_nome : null, pacoteId]
+                    ['aprovado_pendente_retirada', aprovador && aprovador.aprovador_id ? aprovador.aprovador_id : null, aprovador && aprovador.aprovador_nome ? aprovador.aprovador_nome : null, pacoteId]
                 );
                 
                 await run('COMMIT');
@@ -1080,21 +1082,24 @@
                     if (req.quantidade > req.estoque_disponivel) {
                         throw new Error(`Item ${req.item_nome} não tem quantidade suficiente em estoque`);
                     }
-                    await atualizarStatusRequisicao(req.id, 'aprovado');
-                    await descontarEstoque(req.itemId, req.quantidade);
                     
-                    // Registrar movimentação para cada item aprovado
-                    await inserirMovimentacao({
-                        itemId: req.itemId,
-                        itemNome: req.item_nome,
-                        tipo: 'saida',
+                    // Atualizar status da requisição para "aprovado_pendente_retirada"
+                    await atualizarStatusRequisicao(req.id, 'aprovado_pendente_retirada');
+                    
+                    // Criar retirada pendente em vez de debitar diretamente do estoque
+                    await criarRetiradaPendente({
+                        requisicao_id: req.id,
+                        item_id: req.itemId,
+                        item_nome: req.item_nome,
                         quantidade: req.quantidade,
-                        destino: pacote.centroCusto,
-                        descricao: `Requisição em pacote aprovada - Projeto: ${pacote.projeto} - ${pacote.justificativa}`,
+                        centro_custo: pacote.centroCusto,
+                        projeto: pacote.projeto,
+                        justificativa: pacote.justificativa,
                         usuario_id: pacote.userId,
                         usuario_nome: (solicitante && solicitante.name) || null,
                         aprovador_id: aprovador && aprovador.aprovador_id ? aprovador.aprovador_id : null,
-                        aprovador_nome: aprovador && aprovador.aprovador_nome ? aprovador.aprovador_nome : null
+                        aprovador_nome: aprovador && aprovador.aprovador_nome ? aprovador.aprovador_nome : null,
+                        observacoes: 'Aprovado - Aguardando confirmação de retirada'
                     });
                 }
                 
@@ -1146,7 +1151,7 @@
             const sql = `
                 SELECT 
                     COUNT(*) as total_itens,
-                    SUM(CASE WHEN status = 'aprovado' THEN 1 ELSE 0 END) as itens_aprovados,
+                    SUM(CASE WHEN status = 'aprovado' OR status = 'aprovado_pendente_retirada' THEN 1 ELSE 0 END) as itens_aprovados,
                     SUM(CASE WHEN status = 'rejeitado' THEN 1 ELSE 0 END) as itens_rejeitados,
                     SUM(CASE WHEN status = 'pendente' THEN 1 ELSE 0 END) as itens_pendentes
                 FROM requisicoes 
@@ -1170,13 +1175,13 @@
                 // Todos os itens foram aprovados
                 await run(
                     'UPDATE pacotes_requisicao SET status = ?, data_aprovacao = datetime("now") WHERE id = ?',
-                    ['aprovado', pacoteId]
+                    ['aprovado_pendente_retirada', pacoteId]
                 );
             } else {
                 // Alguns itens aprovados e outros rejeitados - parcialmente aprovado
                 await run(
                     'UPDATE pacotes_requisicao SET status = ?, data_aprovacao = datetime("now") WHERE id = ?',
-                    ['parcialmente aprovado', pacoteId]
+                    ['parcialmente_aprovado_pendente_retirada', pacoteId]
                 );
             }
         }

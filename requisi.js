@@ -270,8 +270,10 @@ function carregarMeusPacotes() {
                 pacoteDiv.className = 'pacote-card';
                 
                 const statusClass = pacote.status === 'aprovado' ? 'status-aprovado' :
+                               pacote.status === 'aprovado_pendente_retirada' ? 'status-aprovado-pendente-retirada' :
                                pacote.status === 'rejeitado' ? 'status-rejeitado' :
                                pacote.status === 'parcialmente aprovado' ? 'status-parcialmente-aprovado' :
+                               pacote.status === 'parcialmente_aprovado_pendente_retirada' ? 'status-parcialmente-aprovado-pendente-retirada' :
                                'status-pendente';
                 
                 pacoteDiv.innerHTML = `
@@ -293,7 +295,7 @@ function carregarMeusPacotes() {
                         <button class="btn btn-info btn-sm" onclick="verItensPacote(${pacote.id})" style="margin-right: 5px;">
                             Ver Itens
                         </button>
-                        ${pacote.status === 'aprovado' || pacote.status === 'rejeitado' || pacote.status === 'parcialmente aprovado' ? 
+                        ${pacote.status === 'aprovado' || pacote.status === 'aprovado_pendente_retirada' || pacote.status === 'rejeitado' || pacote.status === 'parcialmente aprovado' || pacote.status === 'parcialmente_aprovado_pendente_retirada' ? 
                             `<button class="btn btn-primary btn-sm" onclick="exportarRelatorioPacote(${pacote.id})">Exportar XLSX</button>` : 
                             ''
                         }
@@ -479,7 +481,7 @@ function expandirPacote(pacoteId) {
                         <td>
                             <span class="status-${item.status}">${item.status}</span>
                             ${!disponivel ? '<br><small style="color: red;">Indisponível</small>' : ''}
-                            ${item.status === 'aprovado' ? '<br><small style="color: green;">✓ Já aprovado</small>' : ''}
+                            ${item.status === 'aprovado' || item.status === 'aprovado_pendente_retirada' ? '<br><small style="color: green;">✓ Já aprovado</small>' : ''}
                             ${item.status === 'rejeitado' ? '<br><small style="color: red;">✗ Já rejeitado</small>' : ''}
                         </td>
                     </tr>
@@ -1159,7 +1161,7 @@ async function gerarRelatorioPacote(pacoteId) {
                                     <tr>
                                         <td>${item.item_nome}</td>
                                         <td>${item.quantidade}</td>
-                                        <td>${item.status === 'aprovado' ? item.quantidade : 0}</td>
+                                        <td>${item.status === 'aprovado' || item.status === 'aprovado_pendente_retirada' ? item.quantidade : 0}</td>
                                         <td><span class="status-${item.status}">${item.status.toUpperCase()}</span></td>
                                     </tr>
                                 `).join('')}
@@ -1265,8 +1267,8 @@ async function editarPacote(pacoteId) {
                                                                name="quantidade_${item.id}" 
                                                                value="${item.quantidade}" 
                                                                disabled>
-                                                        <span style="color: ${item.status === 'aprovado' ? 'green' : 'red'};">
-                                                            ${item.status === 'aprovado' ? '✓ Aprovado' : '✗ Rejeitado'}
+                                                        <span style="color: ${item.status === 'aprovado' || item.status === 'aprovado_pendente_retirada' ? 'green' : 'red'};">
+                                                            ${item.status === 'aprovado' || item.status === 'aprovado_pendente_retirada' ? '✓ Aprovado' : '✗ Rejeitado'}
                                                         </span>
                                                     </div>`
                                                 }
